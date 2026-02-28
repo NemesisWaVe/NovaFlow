@@ -49,31 +49,31 @@ def lambda_handler(event, context):
 
         # --- 2. EXISTING: POLLING INTERCEPTOR ---
         if action == 'check_status':
-        task_id = body.get('task_id')
-        response = table.get_item(Key={'task_id': task_id})
-        
-        if 'Item' in response:
-            item = response['Item']
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                    'Access-Control-Allow-Methods': 'OPTIONS,POST'
-                },
-                'body': json.dumps({
-                    'task_status': item.get('task_status', 'processing'),
-                    'current_phase': item.get('current_phase', 'processing'),
-                    'ai_analysis': item.get('ai_analysis', '{}'),
-                    'chart_data': item.get('chart_data', '[]'), # THE CRITICAL NEW KEY
-                    'error_msg': item.get('error_msg', '')
-                })
-            }
-        else:
-            return {
-                'statusCode': 404,
-                'body': json.dumps({'error': 'Task not found'})
-            }
+                task_id = body.get('task_id')
+                response = table.get_item(Key={'task_id': task_id})
+                
+                if 'Item' in response:
+                    item = response['Item']
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Headers': 'Content-Type',
+                            'Access-Control-Allow-Methods': 'OPTIONS,POST'
+                        },
+                        'body': json.dumps({
+                            'task_status': item.get('task_status', 'processing'),
+                            'current_phase': item.get('current_phase', 'processing'),
+                            'ai_analysis': item.get('ai_analysis', '{}'),
+                            'chart_data': item.get('chart_data', '[]'), # THE CRITICAL NEW KEY
+                            'error_msg': item.get('error_msg', '')
+                        })
+                    }
+                else:
+                    return {
+                        'statusCode': 404,
+                        'body': json.dumps({'error': 'Task not found'})
+                    }
 
         # --- 3. EXISTING: PLG PAYWALL & SQS LOGIC ---
         user_id = body.get('user_id', 'anonymous_guest')
