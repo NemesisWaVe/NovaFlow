@@ -62,6 +62,7 @@ def lambda_handler(event, context):
             insert_sql = f"INSERT INTO dataset VALUES ({', '.join(['?' for _ in safe_headers])})"
             cursor.executemany(insert_sql, list(csv_reader)[:50000])
             conn.commit()
+            update_status(table, task_id, "ingesting", "Dataset loaded into memory successfully.")
 
             # PHASE 2: PLANNING & SQL GENERATION
             update_status(table, task_id, "planning", "Analyzing user prompt and mapping to SQLite schema...")
@@ -77,6 +78,8 @@ def lambda_handler(event, context):
             Return ONLY raw SQL. No markdown.
             """
             sql_system = f"You are a master Data Engineer. Schema: {schema_context}. Output pure SQL. No markdown."
+            raw_sql = invoke_nova(sql_prompt, sql_system).strip().replace('```sql', '').replace('```', '')
+            update_status(table, task_id, "planning", "SQL generated successfully.", raw_sql)
 
             # PHASE 3: EXECUTION
             update_status(table, task_id, "executing", "Executing dynamic SQL against data matrix...", raw_sql)
@@ -90,6 +93,7 @@ def lambda_handler(event, context):
                         data_sample[f"Query_{i+1}"] = [dict(zip(col_names, row)) for row in cursor.fetchall()[:25]]
                 except Exception as db_e:
                     data_sample[f"Query_{i+1}_Error"] = str(db_e)
+                    update_status(table, task_id, "executing", f"Error in query {i+1}: {str(db_e)}", raw_sql)
 
             # PHASE 4: SYNTHESIS & VISUALIZATION
             update_status(table, task_id, "synthesizing", "Data extracted. Generating Plotly schemas and McKinsey-style brief...")
@@ -121,6 +125,7 @@ def lambda_handler(event, context):
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
             final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
             ai_output = json.loads(final_response)
+            update_status(table, task_id, "synthesizing", "Analysis complete. Preparing visualizations...", raw_sql)
 
             # PHASE 5: COMPLETION
             table.update_item(
