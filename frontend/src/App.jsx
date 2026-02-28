@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, Terminal, ChevronRight, Lock, Activity, Database, LayoutPanelLeft, Cpu, Settings, User } from 'lucide-react';
+import { UploadCloud, Terminal, ChevronRight, Lock, Activity, Database, LayoutPanelLeft, Cpu, Settings, User, Menu, X, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Components ---
@@ -45,7 +45,7 @@ const Sparkline = () => (
     </div>
 );
 
-const CursorSpotlightGrid = ({ children }) => {
+const CursorSpotlightGrid = ({ children, processing, rightContent, activeTab }) => {
     const containerRef = useRef(null);
     const svgRef = useRef(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -78,6 +78,21 @@ const CursorSpotlightGrid = ({ children }) => {
             dotsState.current.opacity = new Float32Array(totalDots).fill(0.15);
         }
     }, [totalDots]);
+
+    useEffect(() => {
+        if (!processing || totalDots === 0) return;
+
+        const computeInterval = setInterval(() => {
+            const numNodes = Math.floor(Math.random() * 6) + 5;
+            for (let k = 0; k < numNodes; k++) {
+                const randomIdx = Math.floor(Math.random() * totalDots);
+                dotsState.current.r[randomIdx] = 1.6;
+                dotsState.current.opacity[randomIdx] = 0.9;
+            }
+        }, 100);
+
+        return () => clearInterval(computeInterval);
+    }, [processing, totalDots]);
 
     useEffect(() => {
         if (totalDots === 0) return;
@@ -144,6 +159,7 @@ const CursorSpotlightGrid = ({ children }) => {
     }, [cols, totalDots]);
 
     const handleMouseMove = (e) => {
+        if (processing) return;
         if (containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
             mousePos.current = {
@@ -173,7 +189,7 @@ const CursorSpotlightGrid = ({ children }) => {
                 ref={svgRef}
                 width={dimensions.width}
                 height={dimensions.height}
-                className="absolute inset-0 pointer-events-none"
+                className={`absolute inset-0 pointer-events-none transition-opacity duration-1000 ${(rightContent === 'chart' && activeTab === 'viz') ? 'opacity-[0.05]' : 'opacity-100'}`}
             >
                 {matrix.map((dot, i) => (
                     <circle
@@ -191,7 +207,7 @@ const CursorSpotlightGrid = ({ children }) => {
     );
 };
 
-const TerminalLoader = ({ onComplete }) => {
+const TerminalLoader = ({ currentTaskId, onComplete }) => {
     const steps = [
         "initializing Nova 2 Lite reasoning engine...",
         "allocating virtual compute resources...",
@@ -203,18 +219,37 @@ const TerminalLoader = ({ onComplete }) => {
     const [currentStep, setCurrentStep] = useState(0);
 
     useEffect(() => {
-        if (currentStep < steps.length) {
-            const timer = setTimeout(() => {
-                setCurrentStep(prev => prev + 1);
-            }, 600);
-            return () => clearTimeout(timer);
-        } else if (onComplete) {
-            const finishTimer = setTimeout(() => {
-                onComplete();
-            }, 500);
-            return () => clearTimeout(finishTimer);
-        }
-    }, [currentStep, steps, onComplete]);
+        if (!currentTaskId) return;
+
+        const interval = setInterval(async () => {
+            setCurrentStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
+
+            try {
+                const response = await fetch('https://95w2g285yg.execute-api.us-east-1.amazonaws.com/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'check_status', task_id: currentTaskId })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.task_status === 'completed') {
+                        clearInterval(interval);
+                        setCurrentStep(steps.length);
+                        if (onComplete) {
+                            setTimeout(() => {
+                                onComplete(data.ai_analysis, data.chart_base64);
+                            }, 500);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to poll status:", err);
+            }
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [currentTaskId, onComplete]);
 
     return (
         <div className="font-mono text-xs text-zinc-500 flex flex-col gap-2 p-8 border border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md rounded-md shadow-[0_0_40px_rgba(0,0,0,0.8)] w-full max-w-lg z-10 relative">
@@ -244,7 +279,7 @@ const TerminalLoader = ({ onComplete }) => {
     );
 };
 
-const DataTable = () => (
+const DataTable = ({ headers, data }) => (
     <motion.div
         initial={{ opacity: 0, scale: 0.98, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -255,28 +290,23 @@ const DataTable = () => (
             <Database className="w-4 h-4 text-zinc-400" />
             <span className="font-mono text-xs text-zinc-300">dataset_preview.csv</span>
         </div>
-        <div className="p-4 overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs font-mono text-zinc-400">
-                <thead>
-                    <tr className="border-b border-white/5 text-zinc-500">
-                        <th className="py-2 pr-4 font-normal">id</th>
-                        <th className="py-2 pr-4 font-normal">timestamp</th>
-                        <th className="py-2 pr-4 font-normal">metric_alpha</th>
-                        <th className="py-2 pr-4 font-normal">metric_beta</th>
-                        <th className="py-2 font-normal">system_status</th>
+        <div className="p-4 overflow-x-auto overflow-y-auto max-h-[350px] border border-gray-800 rounded-md custom-scrollbar">
+            <table className="w-full text-left text-sm text-gray-400">
+                <thead className="bg-[#0a0a0a]/90 backdrop-blur sticky top-0 z-10 text-emerald-500 font-mono text-xs uppercase">
+                    <tr className="border-b border-white/5">
+                        {headers?.map((h, i) => (
+                            <th key={i} className="py-2 pr-4 font-normal whitespace-nowrap">{h}</th>
+                        ))}
                     </tr>
                 </thead>
                 <tbody>
-                    {[1, 2, 3, 4, 5, 6, 7].map((row) => (
-                        <tr key={row} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                            <td className="py-2 pr-4 text-zinc-300">0x{(Math.random() * 10000).toFixed(0)}</td>
-                            <td className="py-2 pr-4 text-zinc-500">2026-02-23T10:0{row}:00Z</td>
-                            <td className="py-2 pr-4 text-zinc-300">{(Math.random() * 100).toFixed(4)}</td>
-                            <td className="py-2 pr-4 flex items-center gap-1 text-emerald-400/80 hover:text-emerald-300">
-                                <Activity className="w-3 h-3" />
-                                +{(Math.random() * 50).toFixed(2)}
-                            </td>
-                            <td className="py-2 text-zinc-600">NOMINAL</td>
+                    {data?.map((row, i) => (
+                        <tr key={i} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                            {headers?.map((h, j) => (
+                                <td key={j} className={`py-2 pr-4 whitespace-nowrap ${j === 0 ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                                    {row[h]}
+                                </td>
+                            ))}
                         </tr>
                     ))}
                 </tbody>
@@ -288,29 +318,80 @@ const DataTable = () => (
 const TypewriterText = ({ text }) => {
     const [displayed, setDisplayed] = useState('');
     useEffect(() => {
+        const safeText = typeof text === 'string' ? text : JSON.stringify(text, null, 2) || "Error reading analysis.";
         let i = 0;
         setDisplayed('');
         const int = setInterval(() => {
-            setDisplayed(text.slice(0, i));
+            setDisplayed(safeText.slice(0, i));
             i++;
-            if (i > text.length) clearInterval(int);
+            if (i > safeText.length) clearInterval(int);
         }, 20);
         return () => clearInterval(int);
     }, [text]);
     return (
-        <span>
+        <span className="whitespace-pre-wrap">
             {displayed}
             <span className="animate-pulse bg-emerald-400 w-1.5 h-3 inline-block ml-1 align-middle"></span>
         </span>
     );
 };
 
-const VisualizerArtifact = () => (
+const StrategyRenderer = ({ data }) => {
+    let parsedData = null;
+
+    if (typeof data === 'string') {
+        try {
+            parsedData = JSON.parse(data);
+        } catch (e) {
+            // Not JSON, or malformed. Use as standard string.
+            parsedData = data;
+        }
+    } else {
+        parsedData = data;
+    }
+
+    if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
+        const strictOrder = ['descriptive', 'predictive', 'prescriptive'];
+        const existingKeys = Object.keys(parsedData);
+        // Find keys that are in strict order and available
+        const orderedKeys = strictOrder.filter(k => existingKeys.includes(k));
+        // Find any other keys that were returned but not in the strict order
+        const otherKeys = existingKeys.filter(k => !strictOrder.includes(k));
+
+        const finalKeys = [...orderedKeys, ...otherKeys];
+
+        return (
+            <div className="flex flex-col gap-4">
+                {finalKeys.map((key) => (
+                    <div key={key}>
+                        <div className="text-emerald-400 font-mono text-xs uppercase tracking-[0.2em] mb-2 font-bold">
+                            [ {key} ]
+                        </div>
+                        <div className="border-l-2 border-emerald-500/30 pl-3 mb-6">
+                            <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                <TypewriterText text={parsedData[key]} />
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // Fallback standard text rendering
+    return (
+        <div className="font-mono text-[11px] text-zinc-400 leading-relaxed border-l-2 border-emerald-500/30 pl-4 py-1">
+            <TypewriterText text={data || "Analysis complete. I've isolated an anomaly in the variance metric. Distribution skews to the upper quartile. Recommend threshold adjustment."} />
+        </div>
+    );
+};
+
+const VisualizerArtifact = ({ base64Chart, aiAnalysisText }) => (
     <motion.div
         initial={{ opacity: 0, y: 15, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="border border-white/5 rounded-md overflow-hidden bg-[#0a0a0a]/90 backdrop-blur-xl shadow-2xl w-full max-w-5xl z-10 flex flex-col md:flex-row h-auto md:h-[500px] relative"
+        className="w-full h-full flex-1 border-0 rounded-none bg-[#0a0a0a]/90 backdrop-blur-xl shadow-2xl flex flex-col md:flex-row relative z-10"
     >
         {/* Visual Region (65%) */}
         <div className="w-full md:w-[65%] flex flex-col relative group">
@@ -325,17 +406,15 @@ const VisualizerArtifact = () => (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
                 </div>
             </div>
-            <div className="p-4 sm:p-6 flex flex-col gap-4 flex-1">
+            <div className="p-6 sm:p-10 flex flex-col gap-4 flex-1">
                 <div className="flex justify-between items-end border-b border-white/5 pb-4">
                     <div>
                         <div className="text-zinc-600 font-mono text-[10px] mb-1 tracking-widest uppercase">Metric Correlation Map</div>
-                        <div className="text-base sm:text-lg font-medium text-zinc-200 font-sans tracking-tight">Multidimensional Variance Analysis</div>
                     </div>
-                    <div className="text-right text-emerald-400 font-mono text-xs sm:text-sm whitespace-nowrap hidden sm:block">+23.4% Δ V</div>
                 </div>
                 <div className="flex-1 w-full min-h-[250px] bg-black rounded flex flex-col justify-end relative overflow-hidden border border-white/5 cursor-crosshair">
                     <img
-                        src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80"
+                        src={`data:image/png;base64,${base64Chart}`}
                         alt="Chart Data"
                         className="w-full h-full object-cover opacity-50 mix-blend-screen grayscale group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-700"
                     />
@@ -350,31 +429,19 @@ const VisualizerArtifact = () => (
             </div>
         </div>
 
-        {/* Sonic Co-Pilot Region (35%) */}
-        <div className="w-full md:w-[35%] border-t md:border-t-0 md:border-l border-white/5 bg-zinc-900/10 flex flex-col p-4 sm:p-6 overflow-hidden">
-            <div className="text-[10px] font-mono text-emerald-400 mb-8 tracking-widest uppercase flex items-center gap-2">
+        {/* Executive Strategy Brief Region (35%) */}
+        <div className="w-full md:w-[35%] border-t md:border-t-0 md:border-l border-white/5 bg-zinc-900/10 flex flex-col p-6 sm:p-10 overflow-hidden">
+            <div className="text-[10px] font-mono text-emerald-400 mb-6 tracking-widest uppercase flex items-center gap-2">
                 <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                Sonic Co-Pilot
+                Executive Strategy Brief
             </div>
 
-            {/* Voice Waveform */}
-            <div className="flex items-end gap-1.5 h-16 mb-8 mt-4 px-2">
-                {[1, 2, 3, 4, 5, 6, 7].map(i => (
-                    <motion.div
-                        key={i}
-                        animate={{ height: ['20%', '100%', '30%', '80%', '20%'] }}
-                        transition={{ repeat: Infinity, duration: Math.random() * 0.8 + 0.4, ease: 'easeInOut' }}
-                        className="w-1.5 bg-gradient-to-t from-emerald-500/10 via-emerald-500/50 to-emerald-400 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                    />
-                ))}
+            {/* Scrollable Typewriter Stream */}
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                <StrategyRenderer data={aiAnalysisText} />
             </div>
 
-            {/* Typewriter Stream */}
-            <div className="font-mono text-[11px] text-zinc-400 leading-relaxed border-l-2 border-emerald-500/30 pl-4 py-1">
-                <TypewriterText text="Analysis complete. I've isolated a 23.4% anomaly in the variance metric. Distribution skews to the upper quartile. Recommend threshold adjustment." />
-            </div>
-
-            <div className="mt-auto font-mono text-[9px] text-zinc-600 uppercase tracking-widest flex items-center gap-2">
+            <div className="mt-4 shrink-0 font-mono text-[9px] text-zinc-600 uppercase tracking-widest flex items-center gap-2">
                 <span className="w-1.5 h-1.5 border border-zinc-500 rounded-full"></span>
                 Awaiting input...
             </div>
@@ -382,41 +449,26 @@ const VisualizerArtifact = () => (
     </motion.div>
 );
 
-const SchemaInspector = () => (
+const SchemaInspector = ({ headers }) => (
     <div className="bg-zinc-900/20 border-y border-white/5 px-6 py-4 font-mono text-xs shadow-inner">
         <div className="text-zinc-500 mb-3 tracking-widest uppercase text-[9px] flex items-center justify-between">
             <span>Data Schema Inferred</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 animate-pulse"></span>
         </div>
-        <div className="flex flex-col gap-2 shadow-2xl">
-            <div className="flex justify-between items-center hover:bg-white/[0.02] px-1 py-0.5 rounded cursor-default group">
-                <span className="text-zinc-400">id</span>
-                <div className="flex items-center gap-3">
-                    <Sparkline />
-                    <span className="text-emerald-500/60 text-[10px]">string</span>
-                </div>
-            </div>
-            <div className="flex justify-between items-center hover:bg-white/[0.02] px-1 py-0.5 rounded cursor-default group">
-                <span className="text-zinc-400">timestamp</span>
-                <div className="flex items-center gap-3">
-                    <Sparkline />
-                    <span className="text-emerald-500/60 text-[10px]">datetime</span>
-                </div>
-            </div>
-            <div className="flex justify-between items-center hover:bg-white/[0.02] px-1 py-0.5 rounded cursor-default group">
-                <span className="text-zinc-400">revenue</span>
-                <div className="flex items-center gap-3">
-                    <Sparkline />
-                    <span className="text-emerald-500/60 text-[10px]">float64</span>
-                </div>
-            </div>
-            <div className="flex justify-between items-center hover:bg-white/[0.02] px-1 py-0.5 rounded cursor-default group">
-                <span className="text-zinc-400">status</span>
-                <div className="flex items-center gap-3">
-                    <Sparkline />
-                    <span className="text-emerald-500/60 text-[10px]">enum</span>
-                </div>
-            </div>
+        <div className="flex flex-col gap-2 shadow-2xl overflow-y-auto max-h-32 pr-2 custom-scrollbar">
+            {headers && headers.length > 0 ? (
+                headers.map((h, i) => (
+                    <div key={i} className="flex justify-between items-center hover:bg-white/[0.02] px-1 py-0.5 rounded cursor-default group">
+                        <span className="text-zinc-400">{h}</span>
+                        <div className="flex items-center gap-3">
+                            <Sparkline />
+                            <span className="text-emerald-500/60 text-[10px]">auto</span>
+                        </div>
+                    </div>
+                ))
+            ) : (
+                <div className="text-zinc-600 text-[10px] italic">Awaiting schema...</div>
+            )}
         </div>
     </div>
 );
@@ -426,47 +478,204 @@ const SchemaInspector = () => (
 export default function NovaFlowDashboard() {
     const [file, setFile] = useState(null);
     const [query, setQuery] = useState('');
-    const [questionsAsked, setQuestionsAsked] = useState(0);
+    const [questionsAsked, setQuestionsAsked] = useState(() => {
+        const stored = localStorage.getItem('novaflow_questions_asked');
+        return stored ? parseInt(stored, 10) : 0;
+    });
     const [showPaywall, setShowPaywall] = useState(false);
     const [chatHistory, setChatHistory] = useState([]);
+    const [desktopPanelOpen, setDesktopPanelOpen] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [rightContent, setRightContent] = useState('empty'); // 'empty', 'table', 'processing', 'chart'
     const [activeTab, setActiveTab] = useState('data');
 
-    const MAX_FREE = 3;
+    // Async State
+    const [currentTaskId, setCurrentTaskId] = useState('');
+    const [aiAnalysisText, setAiAnalysisText] = useState('');
+    const [base64Chart, setBase64Chart] = useState('');
+
+    // Real CSV State
+    const [csvHeaders, setCsvHeaders] = useState([]);
+    const [csvPreviewData, setCsvPreviewData] = useState([]);
+
+    // PLG State
+    const [userEmail, setUserEmail] = useState(() => {
+        return localStorage.getItem('novaflow_user_email') || null;
+    });
+    const [showSoftPaywall, setShowSoftPaywall] = useState(false);
+    const [emailInput, setEmailInput] = useState('');
+    const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+    // Automatically generate a unique ID for every new browser that visits the site
+    const [userId] = useState(() => {
+        let storedId = localStorage.getItem('novaflow_guest_id');
+        if (!storedId) {
+            storedId = 'guest_' + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem('novaflow_guest_id', storedId);
+        }
+        return storedId;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('novaflow_questions_asked', questionsAsked.toString());
+    }, [questionsAsked]);
+
+    useEffect(() => {
+        if (userEmail) {
+            localStorage.setItem('novaflow_user_email', userEmail);
+        } else {
+            localStorage.removeItem('novaflow_user_email');
+        }
+    }, [userEmail]);
+
+    const MAX_ANON = 3;
+    const MAX_LEAD = 5;
+    const quotaLimit = userEmail ? MAX_LEAD : MAX_ANON;
 
     const handleFileUpload = (e) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
-            setRightContent('table');
-            setActiveTab('data');
-            setChatHistory([{ role: 'ai', content: '> Dataset mounted successfully. 5,000 rows detected. Schema inference complete.' }]);
+            const uploadedFile = e.target.files[0];
+            setFile(uploadedFile);
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const text = event.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                if (lines.length > 0) {
+                    const headers = lines[0].split(',').map(h => h.trim());
+                    const previewRows = lines.slice(1, 51).map(line => {
+                        const values = line.split(',');
+                        return headers.reduce((obj, header, i) => {
+                            obj[header] = values[i] ? values[i].trim() : '';
+                            return obj;
+                        }, {});
+                    });
+
+                    setCsvHeaders(headers);
+                    setCsvPreviewData(previewRows);
+                    setRightContent('table');
+                    setActiveTab('data');
+                    setChatHistory([{ role: 'ai', content: `> Dataset mounted successfully. ${lines.length - 1} rows detected. Schema inference complete.` }]);
+                }
+            };
+
+            // Read first 500KB to safely parse some lines without locking the browser on huge files
+            const slice = uploadedFile.slice(0, 500 * 1024);
+            reader.readAsText(slice);
         }
     };
 
-    const handleAsk = () => {
+    const handleAsk = async () => {
         if (!query.trim() || !file || processing) return;
 
-        if (questionsAsked >= MAX_FREE) {
+        if (userEmail === null && questionsAsked >= MAX_ANON) {
+            setShowSoftPaywall(true);
+            return;
+        }
+
+        if (userEmail !== null && questionsAsked >= MAX_LEAD) {
             setShowPaywall(true);
             return;
         }
 
-        setChatHistory(prev => [...prev, { role: 'user', content: query }]);
+        // Store query before clearing the input box
+        const currentQuery = query;
+
+        setChatHistory(prev => [...prev, { role: 'user', content: currentQuery }]);
         setQuery('');
         setQuestionsAsked(prev => prev + 1);
         setProcessing(true);
         setRightContent('processing');
         setActiveTab('logs');
+
+        // Close mobile panel automatically when asking to show results
+        if (window.innerWidth < 768) {
+            setMobilePanelOpen(false);
+        }
+
+        try {
+            // STEP 1: Get VIP Pass
+            const urlResponse = await fetch('https://95w2g285yg.execute-api.us-east-1.amazonaws.com/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_upload_url', file_name: file.name })
+            });
+
+            if (urlResponse.status === 403) {
+                setProcessing(false);
+                setShowSoftPaywall(true);
+                return;
+            }
+            if (urlResponse.status === 402) {
+                setProcessing(false);
+                setShowPaywall(true);
+                return;
+            }
+            if (!urlResponse.ok) throw new Error(`HTTP error! status: ${urlResponse.status}`);
+
+            const urlData = await urlResponse.json();
+            const { upload_url, file_key } = urlData;
+
+            // STEP 2: Upload raw file to S3
+            const uploadResponse = await fetch(upload_url, {
+                method: 'PUT',
+                body: file
+            });
+
+            if (!uploadResponse.ok) throw new Error(`Upload failed! status: ${uploadResponse.status}`);
+
+            // STEP 3: Execute Job
+            const execResponse = await fetch('https://95w2g285yg.execute-api.us-east-1.amazonaws.com/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'execute',
+                    user_id: userId,
+                    file_key: file_key,
+                    prompt: currentQuery,
+                    email: userEmail
+                })
+            });
+
+            if (execResponse.status === 403) {
+                setProcessing(false);
+                setShowSoftPaywall(true);
+                return;
+            }
+            if (execResponse.status === 402) {
+                setProcessing(false);
+                setShowPaywall(true);
+                return;
+            }
+            if (!execResponse.ok) {
+                throw new Error(`HTTP error! status: ${execResponse.status}`);
+            }
+
+            const data = await execResponse.json();
+
+            // Log the success to your browser console!
+            console.log("Task accepted by AWS! Task ID:", data.task_id);
+            setCurrentTaskId(data.task_id);
+
+        } catch (error) {
+            console.error("Failed to reach NovaFlow Brain:", error);
+            setChatHistory(prev => [...prev, { role: 'ai', content: `> ERR_CONNECTION: ${error.message}` }]);
+            setProcessing(false);
+            setRightContent('empty');
+        }
     };
 
-    const onProcessingComplete = () => {
+    const onProcessingComplete = (analysis, chart) => {
+        if (analysis) setAiAnalysisText(analysis);
+        if (chart) setBase64Chart(chart);
+
         setProcessing(false);
         setRightContent('chart');
         setActiveTab('viz');
         setChatHistory(prev => [...prev, {
             role: 'ai',
-            content: '> Analysis complete. 23.4% anomaly isolated. Artifact available.'
+            content: '> Analysis complete. Artifact and insights ready.'
         }]);
     };
 
@@ -487,9 +696,9 @@ export default function NovaFlowDashboard() {
                         <div className="w-8 h-8 flex items-center justify-center bg-zinc-200 text-black font-bold uppercase tracking-tighter text-lg pt-0.5 rounded-[2px] shadow-[0_0_10px_rgba(255,255,255,0.1)]">N</div>
                         <h1 className="text-lg font-semibold tracking-tight text-zinc-100 font-sans">NovaFlow</h1>
                     </div>
-                    <div className={`text-xs font-mono px-2 py-1.5 border rounded-[2px] transition-colors flex flex-col items-center flex-shrink-0 ${questionsAsked >= MAX_FREE ? "bg-red-500/5 text-red-500 border-red-500/20" : "bg-white/[0.02] text-zinc-400 border-white/5"}`}>
+                    <div className={`text-xs font-mono px-2 py-1.5 border rounded-[2px] transition-colors flex flex-col items-center flex-shrink-0 ${questionsAsked >= quotaLimit ? "bg-red-500/5 text-red-500 border-red-500/20" : "bg-white/[0.02] text-zinc-400 border-white/5"}`}>
                         <span className="text-[8px] uppercase tracking-widest text-zinc-600 mb-0.5">COMPUTE QUOTA</span>
-                        <span className="text-[11px] font-bold">{MAX_FREE - questionsAsked}/{MAX_FREE} REQ</span>
+                        <span className="text-[11px] font-bold">{Math.max(0, quotaLimit - questionsAsked)}/{quotaLimit} REQ</span>
                     </div>
                 </div>
 
@@ -497,6 +706,13 @@ export default function NovaFlowDashboard() {
                 <div className="hidden md:flex w-[50px] shrink-0 border-r border-white/5 bg-black flex-col items-center py-4 justify-between z-20 shadow-[1px_0_10px_rgba(0,0,0,0.8)]">
                     <div className="w-8 h-8 flex items-center justify-center bg-zinc-200 text-black font-bold uppercase tracking-tighter text-lg pt-0.5 rounded-[2px] shadow-[0_0_15px_rgba(255,255,255,0.1)]">N</div>
                     <div className="flex flex-col gap-6 items-center flex-1 mt-8 text-zinc-600">
+                        <div
+                            onClick={() => setDesktopPanelOpen(!desktopPanelOpen)}
+                            className="p-2 hover:bg-white/10 hover:text-zinc-300 rounded-[2px] cursor-pointer transition-colors"
+                            title="Toggle Command Center"
+                        >
+                            <LayoutPanelLeft className="w-5 h-5" strokeWidth={1.5} />
+                        </div>
                         <div className="p-2 bg-white/10 rounded-[2px] text-zinc-200 cursor-pointer block drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"><Database className="w-5 h-5" strokeWidth={1.5} /></div>
                         <div className="p-2 hover:text-zinc-300 rounded-[2px] cursor-pointer"><Activity className="w-5 h-5" strokeWidth={1.5} /></div>
                         <div className="p-2 hover:text-zinc-300 rounded-[2px] cursor-pointer"><Settings className="w-5 h-5" strokeWidth={1.5} /></div>
@@ -506,8 +722,28 @@ export default function NovaFlowDashboard() {
                     </div>
                 </div>
 
-                {/* 2. Left Panel (Command Center) - Adapts to full width on mobile or hides if Right Panel is active */}
-                <div className={`w-full md:w-[30%] min-w-0 md:min-w-[320px] max-w-none md:max-w-[420px] border-b md:border-b-0 md:border-r border-white/5 bg-[#0a0a0a] flex-col z-10 relative shadow-[0_2px_10px_rgba(0,0,0,0.5)] md:shadow-none ${rightContent !== 'empty' && window.innerWidth < 768 ? 'hidden' : 'flex'}`}>
+                {/* Mobile Left Panel Overlay Background */}
+                {mobilePanelOpen && rightContent !== 'empty' && (
+                    <div
+                        className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+                        onClick={() => setMobilePanelOpen(false)}
+                    />
+                )}
+
+                {/* 2. Left Panel (Command Center) - Adapts to full width on mobile or slides over if right content is active */}
+                <div className={`
+                    ${desktopPanelOpen ? 'md:w-[30%] md:min-w-[320px] md:max-w-[420px] md:border-r border-white/5' : 'md:w-0 md:min-w-0 md:max-w-0 md:border-r-0 md:overflow-hidden'}
+                    w-full min-w-0 max-w-none border-b md:border-b-0 bg-[#0a0a0a] flex-col z-50 md:z-10 shadow-[2px_0_20px_rgba(0,0,0,0.8)] md:shadow-none transition-all duration-300 ease-in-out 
+                    ${rightContent !== 'empty' ? (mobilePanelOpen ? 'flex absolute inset-y-0 left-0 w-[85vw] translate-x-0' : 'flex absolute md:relative inset-y-0 left-0 w-[85vw] md:w-auto -translate-x-full md:translate-x-0') : 'flex relative w-full translate-x-0'}
+                `}>
+
+                    {/* Mobile Left Panel Header */}
+                    <div className="md:hidden flex items-center justify-between p-4 border-b border-white/5 bg-zinc-900/50">
+                        <span className="font-sans font-semibold tracking-tight text-zinc-100">Command Terminal</span>
+                        <button onClick={() => setMobilePanelOpen(false)} className="p-1 rounded bg-white/5 text-zinc-400 hover:text-white">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
 
                     {/* Desktop Header */}
                     <div className="hidden md:flex px-6 py-5 border-b border-white/5 items-center justify-between bg-zinc-900/10">
@@ -515,9 +751,9 @@ export default function NovaFlowDashboard() {
                             <h1 className="text-lg font-semibold tracking-tight text-zinc-100 mb-0.5 font-sans">NovaFlow</h1>
                             <div className="text-[9px] font-mono tracking-widest text-zinc-600 uppercase">SYS_ADMIN_ACTIVE</div>
                         </div>
-                        <div className={`text-xs font-mono px-2 py-1.5 border rounded-[2px] transition-colors flex flex-col items-center ${questionsAsked >= MAX_FREE ? "bg-red-500/5 text-red-500 border-red-500/20" : "bg-white/[0.02] text-zinc-400 border-white/5"}`}>
+                        <div className={`text-xs font-mono px-2 py-1.5 border rounded-[2px] transition-colors flex flex-col items-center ${questionsAsked >= quotaLimit ? "bg-red-500/5 text-red-500 border-red-500/20" : "bg-white/[0.02] text-zinc-400 border-white/5"}`}>
                             <span className="text-[8px] uppercase tracking-widest text-zinc-600 mb-0.5">COMPUTE QUOTA</span>
-                            <span className="text-[11px]">{MAX_FREE - questionsAsked}/{MAX_FREE} REQ</span>
+                            <span className="text-[11px]">{Math.max(0, quotaLimit - questionsAsked)}/{quotaLimit} REQ</span>
                         </div>
                     </div>
 
@@ -537,7 +773,7 @@ export default function NovaFlowDashboard() {
                         <div className="flex-1 flex flex-col overflow-hidden relative">
 
                             {/* Schema Inspector */}
-                            <SchemaInspector />
+                            <SchemaInspector headers={csvHeaders} />
 
                             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 bg-black/20 shadow-inner">
                                 {chatHistory.map((m, i) => (
@@ -570,15 +806,24 @@ export default function NovaFlowDashboard() {
                             <div className="p-3 bg-black relative z-20">
                                 <div className="relative flex items-center group">
                                     <ChevronRight className={`absolute left-3 w-4 h-4 transition-colors ${processing ? 'text-zinc-700' : 'text-emerald-500'}`} />
-                                    <input
-                                        type="text"
+                                    <textarea
                                         disabled={processing}
                                         autoFocus
-                                        className="w-full bg-zinc-900/60 border border-white/10 py-3 pl-9 pr-12 text-[13px] text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:bg-zinc-900 transition-all placeholder-zinc-700 font-mono disabled:opacity-50 rounded-[2px]"
+                                        className="w-full bg-zinc-900/60 border border-white/10 py-3 pl-9 pr-12 text-[13px] text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:bg-zinc-900 transition-all placeholder-zinc-700 font-mono disabled:opacity-50 rounded-[2px] resize-none min-h-[46px] max-h-[200px] overflow-y-auto"
                                         placeholder={processing ? "SYSTEM_LOCKED..." : "execute command..."}
                                         value={query}
-                                        onChange={(e) => setQuery(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
+                                        onChange={(e) => {
+                                            setQuery(e.target.value);
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = `${e.target.scrollHeight}px`;
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleAsk();
+                                            }
+                                        }}
+                                        rows={1}
                                     />
                                     <button
                                         disabled={processing}
@@ -597,7 +842,7 @@ export default function NovaFlowDashboard() {
                 <div className="flex-1 bg-[#0a0a0a] relative flex flex-col z-0 overflow-hidden">
 
                     {/* Interactive Grid Background */}
-                    <CursorSpotlightGrid>
+                    <CursorSpotlightGrid processing={processing} rightContent={rightContent} activeTab={activeTab}>
 
                         {/* Artifact Tabs */}
                         <div className="flex border-b border-white/5 bg-black/80 backdrop-blur-md relative z-20 px-6 pt-3">
@@ -619,27 +864,27 @@ export default function NovaFlowDashboard() {
                         </div>
 
                         {/* Content Area */}
-                        <div className="flex-1 relative w-full h-full flex items-center justify-center p-8 overflow-y-auto">
+                        <div className={`flex-1 relative w-full h-full flex items-center justify-center overflow-y-auto ${rightContent === 'chart' && activeTab === 'viz' ? 'p-0' : 'p-8'}`}>
                             <AnimatePresence mode="wait">
                                 {rightContent === 'table' && activeTab === 'data' && (
                                     <motion.div key="table" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full flex justify-center">
-                                        <DataTable />
+                                        <DataTable headers={csvHeaders} data={csvPreviewData} />
                                     </motion.div>
                                 )}
                                 {rightContent === 'processing' && activeTab === 'logs' && (
                                     <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full flex justify-center">
-                                        <TerminalLoader onComplete={onProcessingComplete} />
+                                        <TerminalLoader currentTaskId={currentTaskId} onComplete={onProcessingComplete} />
                                     </motion.div>
                                 )}
                                 {rightContent === 'chart' && activeTab === 'viz' && (
                                     <motion.div key="chart" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full h-full flex items-center justify-center">
-                                        <VisualizerArtifact />
+                                        <VisualizerArtifact base64Chart={base64Chart} aiAnalysisText={aiAnalysisText} />
                                     </motion.div>
                                 )}
                                 {/* Handle retained states */}
                                 {rightContent === 'chart' && activeTab === 'data' && (
                                     <motion.div key="table-retained" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full flex justify-center">
-                                        <DataTable />
+                                        <DataTable headers={csvHeaders} data={csvPreviewData} />
                                     </motion.div>
                                 )}
                                 {rightContent === 'chart' && activeTab === 'logs' && (
@@ -656,6 +901,16 @@ export default function NovaFlowDashboard() {
                 </div>
 
             </div>
+
+            {/* Floating Mobile Toggle Button */}
+            {rightContent !== 'empty' && (
+                <button
+                    onClick={() => setMobilePanelOpen(true)}
+                    className={`md:hidden fixed bottom-10 right-6 z-[60] w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-black shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 ${mobilePanelOpen ? 'scale-0' : 'scale-100'}`}
+                >
+                    <Terminal className="w-5 h-5" />
+                </button>
+            )}
 
             {/* 4. The Telemetry Footer */}
             <div className="h-[24px] shrink-0 border-t border-white/5 bg-black flex items-center px-4 justify-between font-mono text-[9px] uppercase tracking-widest text-zinc-500 z-30 shadow-[0_-1px_10px_rgba(0,0,0,0.8)]">
@@ -696,7 +951,7 @@ export default function NovaFlowDashboard() {
                                 <div className="border border-white/5 bg-zinc-900/30 p-5 rounded-[2px] mb-8 relative overflow-hidden group">
                                     <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                     <p className="text-[13px] text-zinc-300 mb-4 font-sans leading-relaxed relative z-10">
-                                        Upgrade to Premium for Unlimited Nova 2 Lite Access.
+                                        Upgrade to Premium for Unlimited Enterprise Access.
                                     </p>
                                     <ul className="space-y-3 text-[10px] font-mono text-zinc-400 uppercase tracking-wider relative z-10">
                                         <li className="flex items-center gap-3"><Activity className="w-3 h-3 text-emerald-500/80" /> Unlimited Analysis Streams</li>
@@ -718,6 +973,66 @@ export default function NovaFlowDashboard() {
                                         [ Abort Session ]
                                     </button>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {/* Soft Paywall Modal */}
+                {showSoftPaywall && (
+                    <motion.div
+                        initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                        animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+                        exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.98, y: 5 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="w-full max-w-md bg-[#0a0a0a] text-zinc-100 border border-zinc-800 shadow-[0_0_80px_rgba(0,0,0,0.9)] relative overflow-hidden rounded-[2px]"
+                        >
+                            <div className="w-full h-1 bg-emerald-500" />
+                            <div className="p-8">
+                                <Lock className="w-5 h-5 text-zinc-400 mb-6" strokeWidth={1.5} />
+                                <h2 className="text-lg font-medium tracking-tight mb-2 uppercase text-white font-sans">Anonymous Compute Limit Reached</h2>
+                                <p className="text-zinc-500 text-[11px] mb-6 font-mono leading-relaxed uppercase tracking-wider">
+                                    &gt; Enter your work email to unlock 2 additional advanced data queries.
+                                </p>
+
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (emailInput.includes('@')) {
+                                        setUserEmail(emailInput);
+                                        setShowSoftPaywall(false);
+                                    }
+                                }} className="flex flex-col gap-4">
+                                    <div className="relative">
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                                        <input
+                                            type="email"
+                                            required
+                                            value={emailInput}
+                                            onChange={(e) => setEmailInput(e.target.value)}
+                                            placeholder="engineer@company.com"
+                                            className="w-full bg-zinc-900/60 border border-white/10 py-3 pl-10 pr-4 text-[13px] text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:bg-zinc-900 transition-all placeholder-zinc-700 font-mono rounded-[2px]"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        className="w-full bg-emerald-500 text-black font-semibold py-3 flex items-center justify-center gap-2 hover:bg-emerald-400 transition-colors uppercase text-xs tracking-widest rounded-[2px]"
+                                    >
+                                        Unlock Compute
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSoftPaywall(false)}
+                                        className="w-full text-zinc-600 font-mono text-[10px] py-2 hover:text-zinc-400 uppercase tracking-widest mt-1"
+                                    >
+                                        [ Cancel ]
+                                    </button>
+                                </form>
                             </div>
                         </motion.div>
                     </motion.div>
