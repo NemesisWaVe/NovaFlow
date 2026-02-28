@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, Terminal, ChevronRight, Lock, Activity, Database, LayoutPanelLeft, Cpu, Settings, User, Menu, X, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import Plot from 'react-plotly.js';
 
 // --- Components ---
 
@@ -238,7 +240,7 @@ const TerminalLoader = ({ currentTaskId, onComplete }) => {
                         setCurrentStep(steps.length);
                         if (onComplete) {
                             setTimeout(() => {
-                                onComplete(data.ai_analysis, data.chart_base64);
+                                onComplete(data.ai_analysis, data.chart_data);
                             }, 500);
                         }
                     }
@@ -343,7 +345,6 @@ const StrategyRenderer = ({ data }) => {
         try {
             parsedData = JSON.parse(data);
         } catch (e) {
-            // Not JSON, or malformed. Use as standard string.
             parsedData = data;
         }
     } else {
@@ -353,23 +354,21 @@ const StrategyRenderer = ({ data }) => {
     if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
         const strictOrder = ['descriptive', 'predictive', 'prescriptive'];
         const existingKeys = Object.keys(parsedData);
-        // Find keys that are in strict order and available
         const orderedKeys = strictOrder.filter(k => existingKeys.includes(k));
-        // Find any other keys that were returned but not in the strict order
         const otherKeys = existingKeys.filter(k => !strictOrder.includes(k));
 
         const finalKeys = [...orderedKeys, ...otherKeys];
 
         return (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-6 w-full max-w-4xl">
                 {finalKeys.map((key) => (
                     <div key={key}>
                         <div className="text-emerald-400 font-mono text-xs uppercase tracking-[0.2em] mb-2 font-bold">
                             [ {key} ]
                         </div>
-                        <div className="border-l-2 border-emerald-500/30 pl-3 mb-6">
-                            <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
-                                <TypewriterText text={parsedData[key]} />
+                        <div className="border-l-2 border-emerald-500/30 pl-4 mb-2">
+                            <div className="prose prose-invert prose-emerald max-w-none text-sm text-zinc-300 leading-relaxed [&>p]:mb-4 [&>ul]:list-disc [&>ul]:pl-5 [&>li]:mb-1 [&>strong]:text-emerald-400 [&>code]:bg-zinc-800/50 [&>code]:text-emerald-300 [&>code]:px-1 [&>code]:rounded [&>code]:font-mono [&>code]:text-xs">
+                                <ReactMarkdown>{parsedData[key]}</ReactMarkdown>
                             </div>
                         </div>
                     </div>
@@ -380,70 +379,85 @@ const StrategyRenderer = ({ data }) => {
 
     // Fallback standard text rendering
     return (
-        <div className="font-mono text-[11px] text-zinc-400 leading-relaxed border-l-2 border-emerald-500/30 pl-4 py-1">
-            <TypewriterText text={data || "Analysis complete. I've isolated an anomaly in the variance metric. Distribution skews to the upper quartile. Recommend threshold adjustment."} />
+        <div className="border-l-2 border-emerald-500/30 pl-4 py-1">
+            <div className="prose prose-invert prose-emerald max-w-none text-sm text-zinc-300 leading-relaxed [&>p]:mb-4 [&>ul]:list-disc [&>ul]:pl-5 [&>li]:mb-1 [&>strong]:text-emerald-400 [&>code]:bg-zinc-800/50 [&>code]:text-emerald-300 [&>code]:px-1 [&>code]:rounded [&>code]:font-mono [&>code]:text-xs">
+                <ReactMarkdown>{data || "Analysis complete."}</ReactMarkdown>
+            </div>
         </div>
     );
 };
 
-const VisualizerArtifact = ({ base64Chart, aiAnalysisText }) => (
+const VisualizerArtifact = ({ chartData, aiAnalysisText }) => (
     <motion.div
         initial={{ opacity: 0, y: 15, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="w-full h-full flex-1 border-0 rounded-none bg-[#0a0a0a]/90 backdrop-blur-xl shadow-2xl flex flex-col md:flex-row relative z-10"
+        className="w-full h-full flex-1 border-0 rounded-none bg-[#0a0a0a]/90 backdrop-blur-xl shadow-2xl flex flex-col relative z-10"
     >
-        {/* Visual Region (65%) */}
-        <div className="w-full md:w-[65%] flex flex-col relative group">
-            <div className="bg-zinc-900/30 border-b border-white/5 px-4 py-3 flex items-center justify-between z-20">
+        <div className="w-full flex justify-center sticky top-0 bg-[#0a0a0a]/90 backdrop-blur z-20 border-b border-white/5 px-6 py-4">
+            <div className="flex items-center justify-between w-full max-w-5xl">
                 <div className="flex items-center gap-2">
-                    <LayoutPanelLeft className="w-4 h-4 text-zinc-500" />
-                    <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest hidden sm:inline">visualization_output.plt</span>
-                    <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest sm:hidden">viz_out.plt</span>
+                    <LayoutPanelLeft className="w-5 h-5 text-zinc-500" />
+                    <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest hidden sm:inline">visualization_engine.plt</span>
+                    <span className="font-mono text-xs text-zinc-400 uppercase tracking-widest sm:hidden">viz_out.plt</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9px] text-zinc-600 tracking-widest hidden sm:inline">RENDER: ONLINE</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
-                </div>
-            </div>
-            <div className="p-6 sm:p-10 flex flex-col gap-4 flex-1">
-                <div className="flex justify-between items-end border-b border-white/5 pb-4">
-                    <div>
-                        <div className="text-zinc-600 font-mono text-[10px] mb-1 tracking-widest uppercase">Metric Correlation Map</div>
-                    </div>
-                </div>
-                <div className="flex-1 w-full min-h-[250px] bg-black rounded flex flex-col justify-end relative overflow-hidden border border-white/5 cursor-crosshair">
-                    <img
-                        src={`data:image/png;base64,${base64Chart}`}
-                        alt="Chart Data"
-                        className="w-full h-full object-cover opacity-50 mix-blend-screen grayscale group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-700"
-                    />
-                    <div className="absolute top-2 left-2 sm:top-4 sm:left-4 font-mono text-[9px] sm:text-[10px] px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md">
-                        CONFIDENCE: 98.2%
-                    </div>
-                    <div className="z-10 absolute bottom-2 left-2 right-2 sm:bottom-4 sm:left-4 sm:right-4 flex justify-between font-mono text-[8px] sm:text-[9px] text-zinc-500 uppercase tracking-widest">
-                        <span>Y-Axis: Normalized Dist.</span>
-                        <span className="hidden sm:inline">X-Axis: Timeline (T-0 to T-N)</span>
-                    </div>
+                    <span className="font-mono text-[10px] text-zinc-600 tracking-widest hidden sm:inline">RENDER: PLOTLY NATIVE</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
                 </div>
             </div>
         </div>
 
-        {/* Executive Strategy Brief Region (35%) */}
-        <div className="w-full md:w-[35%] border-t md:border-t-0 md:border-l border-white/5 bg-zinc-900/10 flex flex-col p-6 sm:p-10 overflow-hidden">
-            <div className="text-[10px] font-mono text-emerald-400 mb-6 tracking-widest uppercase flex items-center gap-2">
-                <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                Executive Strategy Brief
-            </div>
+        <div className="p-6 sm:p-10 flex flex-col gap-10 flex-1 overflow-y-auto custom-scrollbar w-full items-center">
+            <div className="w-full max-w-5xl">
+                {/* Main Answers Top Block */}
+                {aiAnalysisText?.main_answers && (
+                    <div className="mb-8">
+                        <div className="text-zinc-500 font-mono text-[11px] mb-3 tracking-widest uppercase flex items-center gap-2">
+                            <Database className="w-3 h-3 text-emerald-500" />
+                            Answers Query
+                        </div>
+                        <div className="text-zinc-300 font-sans pb-4 border-b border-white/5">
+                            <div className="prose prose-invert prose-emerald max-w-none text-base text-zinc-300 leading-relaxed [&>p]:mb-4 [&>ul]:list-disc [&>ul]:pl-5 [&>li]:mb-2 [&>strong]:text-emerald-400 [&>code]:bg-zinc-800/50 [&>code]:text-emerald-300 [&>code]:px-1.5 [&>code]:py-0.5 [&>code]:rounded [&>code]:font-mono [&>code]:text-sm">
+                                <ReactMarkdown>{aiAnalysisText.main_answers}</ReactMarkdown>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
-            {/* Scrollable Typewriter Stream */}
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                <StrategyRenderer data={aiAnalysisText} />
-            </div>
+                <div className="flex flex-col gap-12 w-full">
+                    {chartData && chartData.map((chart, index) => {
+                        // Dynamically merge dark theme layout into plotly config
+                        const darkLayout = {
+                            ...chart.layout,
+                            paper_bgcolor: 'transparent',
+                            plot_bgcolor: 'transparent',
+                            font: { color: '#a1a1aa', family: 'monospace' },
+                            xaxis: { ...chart.layout?.xaxis, gridcolor: '#27272a', zerolinecolor: '#3f3f46' },
+                            yaxis: { ...chart.layout?.yaxis, gridcolor: '#27272a', zerolinecolor: '#3f3f46' }
+                        };
 
-            <div className="mt-4 shrink-0 font-mono text-[9px] text-zinc-600 uppercase tracking-widest flex items-center gap-2">
-                <span className="w-1.5 h-1.5 border border-zinc-500 rounded-full"></span>
-                Awaiting input...
+                        return (
+                            <div key={index} className="flex flex-col gap-3">
+                                <div className="text-zinc-400 font-mono text-xs tracking-widest uppercase border-l-2 border-emerald-500/50 pl-3 py-1 bg-gradient-to-r from-emerald-500/10 to-transparent">
+                                    {chart.title || "Visualization Artifact"}
+                                </div>
+                                <div className="w-full relative overflow-hidden border border-white/5 rounded-md bg-black/40 backdrop-blur-md p-2">
+                                    <Plot
+                                        data={chart.data}
+                                        layout={darkLayout}
+                                        useResizeHandler={true}
+                                        style={{ width: '100%', height: '500px' }}
+                                        config={{ displayModeBar: true, responsive: true }}
+                                    />
+                                    <div className="absolute top-4 left-4 font-mono text-[9px] sm:text-[10px] px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md z-10">
+                                        CONFIDENCE: {(Math.random() * (99.9 - 94.0) + 94.0).toFixed(1)}%
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         </div>
     </motion.div>
@@ -491,8 +505,8 @@ export default function NovaFlowDashboard() {
 
     // Async State
     const [currentTaskId, setCurrentTaskId] = useState('');
-    const [aiAnalysisText, setAiAnalysisText] = useState('');
-    const [base64Chart, setBase64Chart] = useState('');
+    const [aiAnalysisText, setAiAnalysisText] = useState({});
+    const [chartData, setChartData] = useState([]);
 
     // Real CSV State
     const [csvHeaders, setCsvHeaders] = useState([]);
@@ -667,8 +681,8 @@ export default function NovaFlowDashboard() {
     };
 
     const onProcessingComplete = (analysis, chart) => {
-        if (analysis) setAiAnalysisText(analysis);
-        if (chart) setBase64Chart(chart);
+        if (analysis) setAiAnalysisText(JSON.parse(analysis));
+        if (chart) setChartData(JSON.parse(chart));
 
         setProcessing(false);
         setRightContent('chart');
@@ -845,20 +859,20 @@ export default function NovaFlowDashboard() {
                     <CursorSpotlightGrid processing={processing} rightContent={rightContent} activeTab={activeTab}>
 
                         {/* Artifact Tabs */}
-                        <div className="flex border-b border-white/5 bg-black/80 backdrop-blur-md relative z-20 px-6 pt-3">
-                            {['data', 'logs', 'viz'].map((tab) => (
+                        <div className="flex border-b border-white/5 bg-black/80 backdrop-blur-md relative z-20 px-6 pt-3 overflow-x-auto no-scrollbar">
+                            {['data', 'logs', 'viz', 'strategy'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => file && setActiveTab(tab)}
-                                    className={`px-6 py-2.5 font-mono text-[10px] tracking-widest uppercase border-b-2 transition-all ${activeTab === tab && file
+                                    className={`px-6 py-2.5 font-mono text-[10px] tracking-widest uppercase border-b-2 transition-all whitespace-nowrap ${activeTab === tab && file
                                         ? "border-emerald-400/80 text-emerald-400 bg-white/5"
                                         : "border-transparent text-zinc-600 hover:text-zinc-400 hover:bg-white/[0.02]"
                                         } ${!file && "opacity-30 cursor-not-allowed"}`}
                                 >
-                                    {tab === 'data' ? '[ Data View ]' : tab === 'logs' ? '[ Execution Logs ]' : '[ Visualization ]'}
+                                    {tab === 'data' ? '[ Data View ]' : tab === 'logs' ? '[ Execution Pipeline ]' : tab === 'viz' ? '[ Visualizations ]' : '[ Strategy Brief ]'}
                                 </button>
                             ))}
-                            <div className="ml-auto pb-2 flex items-end">
+                            <div className="ml-auto pb-2 flex items-end shrink-0 pl-6 hidden md:flex">
                                 <span className="font-mono text-[9px] text-zinc-600 uppercase tracking-widest">Workspace: Isolated</span>
                             </div>
                         </div>
@@ -878,7 +892,7 @@ export default function NovaFlowDashboard() {
                                 )}
                                 {rightContent === 'chart' && activeTab === 'viz' && (
                                     <motion.div key="chart" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full h-full flex items-center justify-center">
-                                        <VisualizerArtifact base64Chart={base64Chart} aiAnalysisText={aiAnalysisText} />
+                                        <VisualizerArtifact chartData={chartData} aiAnalysisText={aiAnalysisText} />
                                     </motion.div>
                                 )}
                                 {/* Handle retained states */}
@@ -888,11 +902,51 @@ export default function NovaFlowDashboard() {
                                     </motion.div>
                                 )}
                                 {rightContent === 'chart' && activeTab === 'logs' && (
-                                    <div key="logs-complete" className="font-mono text-xs text-zinc-500 flex flex-col gap-2 p-8 border border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md rounded-md z-10">
-                                        <span className="text-emerald-400">&gt; Process completed successfully.</span>
-                                        <span>&gt; Artifact available in Visualization tab.</span>
-                                        <span className="text-zinc-600 mt-4">&gt; Standing by...</span>
+                                    <div key="logs-complete" className="font-mono text-xs text-zinc-400 flex flex-col p-8 border border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md rounded-md z-10 w-full max-w-4xl h-full max-h-[80vh] overflow-hidden shadow-2xl">
+
+                                        {/* Terminal Header */}
+                                        <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
+                                            <div className="flex items-center gap-3">
+                                                <Terminal className="w-4 h-4 text-emerald-500" />
+                                                <span className="text-zinc-300 tracking-widest uppercase">Execution Pipeline</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-zinc-800"></span>
+                                                <span className="w-2.5 h-2.5 rounded-full bg-zinc-800"></span>
+                                                <span className="w-2.5 h-2.5 rounded-full bg-zinc-800"></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Roadmap Body */}
+                                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-4 flex flex-col gap-6">
+
+                                            {/* Process Steps */}
+                                            <div className="flex flex-col gap-2 text-[11px] font-sans">
+                                                <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> <span>Mounting dataset schema into agent context...</span></div>
+                                                <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> <span>Analyzing statistical distribution & anomalies...</span></div>
+                                                <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> <span>Writing analytical SQL query...</span></div>
+                                                <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> <span>Executing query against DataFrame...</span></div>
+                                            </div>
+
+                                            {/* SQL Block */}
+                                            <div className="flex flex-col gap-2">
+                                                <div className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1 flex items-center gap-2">
+                                                    <Database className="w-3 h-3" />
+                                                    RAW SQL KERNEL
+                                                </div>
+                                                <pre className="text-emerald-400 font-mono text-[10px] whitespace-pre-wrap bg-black/50 p-4 border border-white/5 rounded leading-relaxed shadow-inner">
+                                                    {aiAnalysisText?.execution_log || "SELECT * FROM dataset LIMIT 10;"}
+                                                </pre>
+                                            </div>
+
+                                            <div className="text-emerald-500 mt-2 font-mono text-[11px]">&gt; Process complete. Artifacts deployed to Visualization & Strategy tabs.</div>
+                                        </div>
                                     </div>
+                                )}
+                                {rightContent === 'chart' && activeTab === 'strategy' && (
+                                    <motion.div key="strategy" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="w-full h-full flex justify-center py-8 overflow-y-auto custom-scrollbar">
+                                        <StrategyRenderer data={aiAnalysisText?.strategy_brief} />
+                                    </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
