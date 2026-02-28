@@ -442,13 +442,16 @@ const VisualizerArtifact = ({ chartData, aiAnalysisText }) => (
                                 <div className="text-zinc-400 font-mono text-xs tracking-widest uppercase border-l-2 border-emerald-500/50 pl-3 py-1 bg-gradient-to-r from-emerald-500/10 to-transparent">
                                     {chart.title || "Visualization Artifact"}
                                 </div>
-                                <div className="w-full relative overflow-hidden border border-white/5 rounded-md bg-black/40 backdrop-blur-md p-2">
+                                <div className="w-full relative overflow-hidden border border-white/10 rounded-md bg-black p-4 mb-6 shadow-xl">
                                     <Plot
                                         data={chart.data}
-                                        layout={darkLayout}
+                                        layout={{
+                                            ...darkLayout,
+                                            autosize: true,
+                                        }}
                                         useResizeHandler={true}
-                                        style={{ width: '100%', height: '500px' }}
-                                        config={{ displayModeBar: true, responsive: true }}
+                                        style={{ width: '100%', height: '300px' }}
+                                        config={{ displayModeBar: false, responsive: true }}
                                     />
                                     <div className="absolute top-4 left-4 font-mono text-[9px] sm:text-[10px] px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md z-10">
                                         CONFIDENCE: {(Math.random() * (99.9 - 94.0) + 94.0).toFixed(1)}%
@@ -934,9 +937,13 @@ export default function NovaFlowDashboard() {
                                                     <Database className="w-3 h-3" />
                                                     RAW SQL KERNEL
                                                 </div>
-                                                <pre className="text-emerald-400 font-mono text-[10px] whitespace-pre-wrap bg-black/50 p-4 border border-white/5 rounded leading-relaxed shadow-inner">
-                                                    {aiAnalysisText?.execution_log || "SELECT * FROM dataset LIMIT 10;"}
-                                                </pre>
+                                                <div className="bg-[#050505] p-5 border border-white/10 rounded-md shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)]">
+                                                    <pre className="text-emerald-400 font-mono text-[11px] whitespace-pre-wrap leading-relaxed">
+                                                        <code>
+                                                            {aiAnalysisText?.execution_log || "SELECT \n  category,\n  SUM(revenue) as total_revenue\nFROM dataset\nGROUP BY category\nORDER BY total_revenue DESC\nLIMIT 10;"}
+                                                        </code>
+                                                    </pre>
+                                                </div>
                                             </div>
 
                                             <div className="text-emerald-500 mt-2 font-mono text-[11px]">&gt; Process complete. Artifacts deployed to Visualization & Strategy tabs.</div>
