@@ -417,8 +417,8 @@ const VisualizerArtifact = ({ chartData, aiAnalysisText }) => (
                             <Database className="w-3 h-3 text-emerald-500" />
                             Answers Query
                         </div>
-                        <div className="text-zinc-300 font-sans pb-4 border-b border-white/5">
-                            <div className="prose prose-invert prose-emerald max-w-none text-base text-zinc-300 leading-relaxed [&>p]:mb-4 [&>ul]:list-disc [&>ul]:pl-5 [&>li]:mb-2 [&>strong]:text-emerald-400 [&>code]:bg-zinc-800/50 [&>code]:text-emerald-300 [&>code]:px-1.5 [&>code]:py-0.5 [&>code]:rounded [&>code]:font-mono [&>code]:text-sm">
+                        <div className="pb-4 border-b border-white/5">
+                            <div className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap prose prose-invert prose-p:mb-4 prose-headings:text-emerald-400 prose-strong:text-emerald-300 max-w-none">
                                 <ReactMarkdown>{aiAnalysisText.main_answers}</ReactMarkdown>
                             </div>
                         </div>
@@ -430,33 +430,43 @@ const VisualizerArtifact = ({ chartData, aiAnalysisText }) => (
                         // Dynamically merge dark theme layout into plotly config
                         const darkLayout = {
                             ...chart.layout,
+                            autosize: true,
                             paper_bgcolor: 'transparent',
                             plot_bgcolor: 'transparent',
-                            font: { color: '#a1a1aa', family: 'monospace' },
-                            xaxis: { ...chart.layout?.xaxis, gridcolor: '#27272a', zerolinecolor: '#3f3f46' },
-                            yaxis: { ...chart.layout?.yaxis, gridcolor: '#27272a', zerolinecolor: '#3f3f46' }
+                            font: { family: 'monospace', color: '#a1a1aa' },
+                            xaxis: { ...chart.layout?.xaxis, gridcolor: '#1f2937', zerolinecolor: '#374151' },
+                            yaxis: { ...chart.layout?.yaxis, gridcolor: '#1f2937', zerolinecolor: '#374151' }
                         };
 
                         return (
                             <div key={index} className="flex flex-col gap-3">
-                                <div className="text-zinc-400 font-mono text-xs tracking-widest uppercase border-l-2 border-emerald-500/50 pl-3 py-1 bg-gradient-to-r from-emerald-500/10 to-transparent">
-                                    {chart.title || "Visualization Artifact"}
+                                <div className="flex justify-between items-end border-l-2 border-emerald-500/50 pl-3 py-1 bg-gradient-to-r from-emerald-500/10 to-transparent">
+                                    <span className="text-zinc-400 font-mono text-xs tracking-widest uppercase">{chart.title || "Visualization Artifact"}</span>
                                 </div>
-                                <div className="w-full relative overflow-hidden border border-white/10 rounded-md bg-black p-4 mb-6 shadow-xl">
+                                <div className="w-full relative overflow-hidden border border-white/10 rounded-md bg-black p-4 shadow-xl">
                                     <Plot
                                         data={chart.data}
-                                        layout={{
-                                            ...darkLayout,
-                                            autosize: true,
-                                        }}
+                                        layout={darkLayout}
                                         useResizeHandler={true}
                                         style={{ width: '100%', height: '300px' }}
-                                        config={{ displayModeBar: false, responsive: true }}
+                                        config={{
+                                            displayModeBar: true,
+                                            displaylogo: false,
+                                            toImageButtonOptions: {
+                                                format: 'png',
+                                                filename: 'NovaFlow_Export',
+                                                height: 600,
+                                                width: 800,
+                                                scale: 2
+                                            },
+                                            modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                                        }}
                                     />
-                                    <div className="absolute top-4 left-4 font-mono text-[9px] sm:text-[10px] px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md z-10">
+                                    <div className="absolute top-4 left-4 font-mono text-[9px] sm:text-[10px] px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md z-10 pointer-events-none">
                                         CONFIDENCE: {(Math.random() * (99.9 - 94.0) + 94.0).toFixed(1)}%
                                     </div>
                                 </div>
+                                <div className="text-[9px] text-zinc-600 font-mono text-right mt-1">Hover over chart and click the camera icon to export High-Res PNG</div>
                             </div>
                         );
                     })}
@@ -683,17 +693,38 @@ export default function NovaFlowDashboard() {
         }
     };
 
-    const onProcessingComplete = (analysis, chart) => {
-        if (analysis) setAiAnalysisText(JSON.parse(analysis));
-        if (chart) setChartData(JSON.parse(chart));
+    const onProcessingComplete = (analysisRaw, chartRaw) => {
+        console.log("Backend Success! Raw Analysis:", analysisRaw);
+        console.log("Backend Success! Raw Chart Data:", chartRaw);
 
-        setProcessing(false);
-        setRightContent('chart');
-        setActiveTab('viz');
-        setChatHistory(prev => [...prev, {
-            role: 'ai',
-            content: '> Analysis complete. Artifact and insights ready.'
-        }]);
+        try {
+            // Safely parse the strings coming from DynamoDB
+            const parsedAnalysis = typeof analysisRaw === 'string' ? JSON.parse(analysisRaw) : (analysisRaw || {});
+            const parsedCharts = typeof chartRaw === 'string' ? JSON.parse(chartRaw) : (chartRaw || []);
+
+            // Set the states
+            setAiAnalysisText(parsedAnalysis);
+            setChartData(parsedCharts);
+
+            setChatHistory(prev => [...prev, {
+                role: 'ai',
+                content: '> Analysis complete. Artifact and insights ready.'
+            }]);
+
+        } catch (err) {
+            console.error("CRITICAL PARSE ERROR: The AI returned malformed JSON.", err);
+            // Prevent the infinite loading screen even if the AI hallucinates
+            setAiAnalysisText({
+                main_answers: `**Data Parsing Error**\nThe AI generated an invalid data structure.\n\nError: ${err.message}`,
+                strategy_brief: {}
+            });
+            setChartData([]);
+        } finally {
+            // ALWAYS turn off the loading screen and route to the tab
+            setProcessing(false);
+            setRightContent('chart');
+            setActiveTab('viz');
+        }
     };
 
     return (
