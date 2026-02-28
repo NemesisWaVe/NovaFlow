@@ -64,11 +64,19 @@ def lambda_handler(event, context):
             conn.commit()
 
             # PHASE 2: PLANNING & SQL GENERATION
-            update_status(table, task_id, "planning", "Analyzing user prompt and mapping to dataset schema to write execution roadmap...")
+            update_status(table, task_id, "planning", "Analyzing user prompt and mapping to SQLite schema...")
             schema_context = f"Table 'dataset' columns: {', '.join(safe_headers)}"
-            sql_prompt = f"User Request: {user_prompt}\n\nWrite the SQLite queries to extract this data. You may write multiple queries separated by semicolons. Return ONLY raw SQL."
+            sql_prompt = f"""
+            User Request: {user_prompt}
+            
+            Write the SQLite queries to extract this data. You may write multiple queries separated by semicolons.
+            CRITICAL SQLITE LIMITATIONS: 
+            - SQLite DOES NOT support CORREL(), STDEV(), or VAR() functions. 
+            - If the user asks for a correlation, you MUST work around this by grouping data into bins/ranges and calculating the AVG() of the target variable (e.g., AVG(risk) GROUP BY age_group).
+            
+            Return ONLY raw SQL. No markdown.
+            """
             sql_system = f"You are a master Data Engineer. Schema: {schema_context}. Output pure SQL. No markdown."
-            raw_sql = invoke_nova(sql_prompt, sql_system).strip().replace('```sql', '').replace('```', '')
 
             # PHASE 3: EXECUTION
             update_status(table, task_id, "executing", "Executing dynamic SQL against data matrix...", raw_sql)
@@ -84,17 +92,31 @@ def lambda_handler(event, context):
                     data_sample[f"Query_{i+1}_Error"] = str(db_e)
 
             # PHASE 4: SYNTHESIS & VISUALIZATION
-            update_status(table, task_id, "synthesizing", "Data extracted. Synthesizing multi-modal strategy brief and rendering visual payloads...")
+            update_status(table, task_id, "synthesizing", "Data extracted. Generating Plotly schemas and McKinsey-style brief...")
             final_prompt = f"""
             User Request: {user_prompt}
             Mathematical Results Extracted: {json.dumps(data_sample)}
 
             Act as an elite Data Analyst. 
             Output a JSON object with EXACTLY these keys:
-            1. "main_answers": Direct, detailed answers to the user's questions. USE MARKDOWN FREELY (bolding, lists, headers).
+            1. "main_answers": Direct, detailed answers to the user's scenarios. Use markdown (bolding, headers).
             2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. Use markdown.
-            3. "visualizations": An array of 1 to 3 objects. 
-               Each object must have "title", "type" (bar, line, scatter, or heatmap), and "raw_data" (an array of JSON objects representing the exact X/Y or Matrix coordinates to be plotted). DO NOT generate Chart.js configs. Just output the raw data array so the frontend can build it natively.
+            3. "visualizations": An array of exactly 1 to 3 chart objects.
+               Each object MUST be a strictly valid Plotly.js JSON configuration.
+               The format MUST be exactly this structure:
+               {{
+                 "data": [
+                    {{"x": ["label1", "label2"], "y": [10, 20], "type": "bar", "marker": {{"color": "#10b981"}}}}
+                 ],
+                 "layout": {{
+                    "title": "Your Chart Title",
+                    "paper_bgcolor": "rgba(0,0,0,0)",
+                    "plot_bgcolor": "rgba(0,0,0,0)",
+                    "font": {{"color": "#a1a1aa"}},
+                    "margin": {{"t": 40, "b": 40, "l": 40, "r": 20}}
+                 }}
+               }}
+               CRITICAL: For Heatmaps, use "type": "heatmap", with "x", "y", and "z" (a 2D array of values), and use a colorscale like "Viridis" or "Greens".
             """
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
             final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
