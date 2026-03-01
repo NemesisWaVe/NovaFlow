@@ -69,6 +69,9 @@ def lambda_handler(event, context):
                     # If text is missing, label it 'Unknown' and strip trailing spaces
                     df[col] = df[col].fillna('Unknown').astype(str).str.strip()
             
+            final_rows = len(df)
+            preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns. Nulls imputed via median/mode."
+
             # 5. Load the mathematically sound data into SQLite
             conn = sqlite3.connect(':memory:')
             df.to_sql('dataset', conn, index=False, if_exists='replace')
