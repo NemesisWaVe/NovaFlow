@@ -4,16 +4,16 @@ import csv
 import io
 import sqlite3
 import re
+import pandas as pd 
 
 dynamodb = boto3.resource('dynamodb')
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
 
 TABLE_NAME = 'NovaFlow_Tasks'
-S3_BUCKET_NAME = 'novaflow-data-artifacts-2026' # <--- EXACT LOWERCASE NAME
+S3_BUCKET_NAME = 'novaflow-data-artifacts-2026' 
 
 def update_status(table, task_id, phase, log_message, sql=None):
-    # This pushes LIVE updates to the frontend
     UpdateExp = "SET current_phase = :p, execution_log = :l"
     ExpVals = {':p': phase, ':l': log_message}
     if sql:
@@ -46,23 +46,36 @@ def lambda_handler(event, context):
         file_key = body.get('file_key')
 
         try:
-            # PHASE 1: INGESTION
-            update_status(table, task_id, "ingesting", "Downloading dataset and building In-Memory SQL Engine...")
+            # PHASE 1: INGESTION & AUTONOMOUS PREPROCESSING
+            update_status(table, task_id, "ingesting", "Executing Pandas preprocessing: Imputing nulls and coercing types...")
             s3_response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=file_key)
-            csv_content = s3_response['Body'].read().decode('utf-8')
             
+            # 1. Load data directly into a Pandas DataFrame (Limit to 50k rows for memory safety)
+            df = pd.read_csv(s3_response['Body'], nrows=50000)
+            
+            # 2. The Auto-Cleaner: Drop completely empty rows and columns
+            df.dropna(axis=1, how='all', inplace=True)
+            df.dropna(axis=0, how='all', inplace=True)
+            
+            # 3. Schema Normalization: Clean column headers (no spaces, all lowercase)
+            df.columns = [re.sub(r'\W+', '_', str(col).strip().lower()) for col in df.columns]
+            
+            # 4. Smart Imputation: Fix dirty data autonomously
+            for col in df.columns:
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    # If numbers are missing, fill them with the column's Median value
+                    df[col] = df[col].fillna(df[col].median())
+                else:
+                    # If text is missing, label it 'Unknown' and strip trailing spaces
+                    df[col] = df[col].fillna('Unknown').astype(str).str.strip()
+            
+            # 5. Load the mathematically sound data into SQLite
             conn = sqlite3.connect(':memory:')
+            df.to_sql('dataset', conn, index=False, if_exists='replace')
             cursor = conn.cursor()
-            csv_reader = csv.reader(io.StringIO(csv_content))
-            headers = next(csv_reader)
-            safe_headers = [re.sub(r'\W+', '_', h.strip().lower()) for h in headers]
             
-            create_table_sql = f"CREATE TABLE dataset ({', '.join([h + ' TEXT' for h in safe_headers])})"
-            cursor.execute(create_table_sql)
-            insert_sql = f"INSERT INTO dataset VALUES ({', '.join(['?' for _ in safe_headers])})"
-            cursor.executemany(insert_sql, list(csv_reader)[:50000])
-            conn.commit()
-            update_status(table, task_id, "ingesting", "Dataset loaded into memory successfully.")
+            safe_headers = list(df.columns)
+            update_status(table, task_id, "ingesting", "Dataset cleaned and loaded into memory successfully.")
 
             # PHASE 2: PLANNING & SQL GENERATION
             update_status(table, task_id, "planning", "Analyzing user prompt and mapping to SQLite schema...")
@@ -73,7 +86,7 @@ def lambda_handler(event, context):
             Write the SQLite queries to extract this data. You may write multiple queries separated by semicolons.
             CRITICAL SQLITE LIMITATIONS: 
             - SQLite DOES NOT support CORREL(), STDEV(), or VAR() functions. 
-            - If the user asks for a correlation, you MUST work around this by grouping data into bins/ranges and calculating the AVG() of the target variable (e.g., AVG(risk) GROUP BY age_group).
+            - If the user asks for a correlation, you MUST work around this by grouping data into bins/ranges and calculating the AVG() of the target variable.
             
             Return ONLY raw SQL. No markdown.
             """
@@ -95,32 +108,37 @@ def lambda_handler(event, context):
                     data_sample[f"Query_{i+1}_Error"] = str(db_e)
                     update_status(table, task_id, "executing", f"Error in query {i+1}: {str(db_e)}", raw_sql)
 
-            # PHASE 4: SYNTHESIS & VISUALIZATION
+            # PHASE 4: SYNTHESIS & VISUALIZATION (UPGRADED FOR ENTERPRISE CHARTS)
             update_status(table, task_id, "synthesizing", "Data extracted. Generating Plotly schemas and McKinsey-style brief...")
             final_prompt = f"""
             User Request: {user_prompt}
             Mathematical Results Extracted: {json.dumps(data_sample)}
 
-            Act as an elite Data Analyst. 
+            Act as an elite Principal Data Scientist. 
             Output a JSON object with EXACTLY these keys:
-            1. "main_answers": Direct, detailed answers to the user's scenarios. Use markdown (bolding, headers).
+            
+            1. "main_answers": Direct, data-driven answers formatted EXACTLY like this:
+               **Scenario [X]: [Title]**
+               *Analysis Goal:* [1 sentence]
+               *Key Finding:* [Use exact numbers from the data]
+               *Insight:* [Actionable business/medical takeaway]
+               (Use standard Markdown. Use raw numbers, do NOT use LaTeX formatting)
+               
             2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. Use markdown.
+            
             3. "visualizations": An array of exactly 1 to 3 chart objects.
                Each object MUST be a strictly valid Plotly.js JSON configuration.
-               The format MUST be exactly this structure:
-               {{
-                 "data": [
-                    {{"x": ["label1", "label2"], "y": [10, 20], "type": "bar", "marker": {{"color": "#10b981"}}}}
-                 ],
-                 "layout": {{
-                    "title": "Your Chart Title",
-                    "paper_bgcolor": "rgba(0,0,0,0)",
-                    "plot_bgcolor": "rgba(0,0,0,0)",
-                    "font": {{"color": "#a1a1aa"}},
-                    "margin": {{"t": 40, "b": 40, "l": 40, "r": 20}}
-                 }}
-               }}
-               CRITICAL: For Heatmaps, use "type": "heatmap", with "x", "y", and "z" (a 2D array of values), and use a colorscale like "Viridis" or "Greens".
+               
+               CRITICAL CHART RULES TO MAKE THEM LOOK INCREDIBLE:
+               - Do NOT use single colors. 
+               - If comparing categories (like Male vs Female), you MUST use MULTIPLE traces in the "data" array.
+               - Example of grouped bar chart data:
+                 [
+                   {{"x": ["<30", "30-50"], "y": [10, 20], "name": "Male", "type": "bar", "marker": {{"color": "#3b82f6"}}}},
+                   {{"x": ["<30", "30-50"], "y": [15, 25], "name": "Female", "type": "bar", "marker": {{"color": "#f43f5e"}}}}
+                 ]
+               - In the "layout", you MUST include "barmode": "group" for bar charts.
+               - For Heatmaps, include "colorscale": "Viridis".
             """
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
             final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
@@ -143,6 +161,7 @@ def lambda_handler(event, context):
             )
 
         except Exception as e:
+            print(f"CRITICAL SYSTEM CRASH: {str(e)}")
             table.update_item(
                 Key={'task_id': task_id},
                 UpdateExpression="SET task_status = :s, error_msg = :e",
