@@ -5,7 +5,6 @@ import io
 import sqlite3
 import re
 import pandas as pd 
-
 dynamodb = boto3.resource('dynamodb')
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
@@ -52,6 +51,7 @@ def lambda_handler(event, context):
             
             # 1. Load data directly into a Pandas DataFrame (Limit to 50k rows for memory safety)
             df = pd.read_csv(s3_response['Body'], nrows=50000)
+            initial_rows = len(df)
             
             # 2. The Auto-Cleaner: Drop completely empty rows and columns
             df.dropna(axis=1, how='all', inplace=True)
@@ -114,30 +114,25 @@ def lambda_handler(event, context):
             User Request: {user_prompt}
             Mathematical Results Extracted: {json.dumps(data_sample)}
 
-            Act as an elite Principal Data Scientist. 
+            Act as an elite Principal Data Scientist at McKinsey. 
             Output a JSON object with EXACTLY these keys:
             
-            1. "main_answers": Direct, data-driven answers formatted EXACTLY like this:
+            1. "main_answers": Direct answers formatted EXACTLY like this (USE DOUBLE NEWLINES between lines):
                **Scenario [X]: [Title]**
-               *Analysis Goal:* [1 sentence]
-               *Key Finding:* [Use exact numbers from the data]
-               *Insight:* [Actionable business/medical takeaway]
-               (Use standard Markdown. Use raw numbers, do NOT use LaTeX formatting)
                
-            2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. Use markdown.
+               *Analysis Goal:* [1 sentence]
+               
+               *Key Finding:* [Use exact numbers from the data]
+               
+               *Insight:* [Actionable business/medical takeaway]
+               
+            2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. 
+               CRITICAL: You MUST write at least 3 to 4 highly detailed, sophisticated sentences for each of these three keys. Do not be brief. Think deeply about the business impact.
             
             3. "visualizations": An array of exactly 1 to 3 chart objects.
                Each object MUST be a strictly valid Plotly.js JSON configuration.
-               
-               CRITICAL CHART RULES TO MAKE THEM LOOK INCREDIBLE:
-               - Do NOT use single colors. 
-               - If comparing categories (like Male vs Female), you MUST use MULTIPLE traces in the "data" array.
-               - Example of grouped bar chart data:
-                 [
-                   {{"x": ["<30", "30-50"], "y": [10, 20], "name": "Male", "type": "bar", "marker": {{"color": "#3b82f6"}}}},
-                   {{"x": ["<30", "30-50"], "y": [15, 25], "name": "Female", "type": "bar", "marker": {{"color": "#f43f5e"}}}}
-                 ]
-               - In the "layout", you MUST include "barmode": "group" for bar charts.
+               - If comparing categories (like Male vs Female), use MULTIPLE traces in the "data" array.
+               - In the "layout", include "barmode": "group" for bar charts.
                - For Heatmaps, include "colorscale": "Viridis".
             """
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
@@ -153,13 +148,14 @@ def lambda_handler(event, context):
                     ':s': 'completed',
                     ':a': json.dumps({
                         "main_answers": ai_output.get("main_answers", ""),
-                        "strategy_brief": ai_output.get("strategy_brief", {})
+                        "strategy_brief": ai_output.get("strategy_brief", {}),
+                        "raw_sql": raw_sql, # PASSING THE REAL SQL
+                        "preprocessing_log": preprocessing_telemetry # PASSING THE CLEANING STATS
                     }),
                     ':c': json.dumps(ai_output.get("visualizations", [])),
                     ':p': 'done'
                 }
             )
-
         except Exception as e:
             print(f"CRITICAL SYSTEM CRASH: {str(e)}")
             table.update_item(
