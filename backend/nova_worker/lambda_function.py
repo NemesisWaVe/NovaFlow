@@ -72,6 +72,14 @@ def lambda_handler(event, context):
             final_rows = len(df)
             preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns. Nulls imputed via median/mode."
 
+            # 4.5 SILENT TELEMETRY: Pre-calculate the Correlation Matrix for the AI
+            try:
+                corr_matrix = df.corr(numeric_only=True).round(2).to_dict()
+                preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns. Pearson matrix computed."
+            except Exception:
+                corr_matrix = {"error": "Could not compute correlation matrix"}
+                preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows."
+
             # 5. Load the mathematically sound data into SQLite
             conn = sqlite3.connect(':memory:')
             df.to_sql('dataset', conn, index=False, if_exists='replace')
@@ -115,29 +123,27 @@ def lambda_handler(event, context):
             update_status(table, task_id, "synthesizing", "Data extracted. Generating Plotly schemas and McKinsey-style brief...")
             final_prompt = f"""
             User Request: {user_prompt}
-            Mathematical Results Extracted: {json.dumps(data_sample)}
+            SQL Execution Results: {json.dumps(data_sample)}
+            Dataset Statistical Profile (Correlations): {json.dumps(corr_matrix)}
 
-            Act as an elite Principal Data Scientist at McKinsey. 
-            You MUST output a strictly valid JSON object with EXACTLY these three keys: "main_answers", "strategy_brief", and "visualizations".
+            Act as an autonomous Principal Data Scientist. You have full access to the Plotly.js ecosystem.
+            Output a strictly valid JSON object with "main_answers", "strategy_brief", and "visualizations".
 
             1. "main_answers": Direct answers formatted EXACTLY like this (USE DOUBLE NEWLINES between lines):
                **Scenario [X]: [Title]**
-               
                *Analysis Goal:* [1 sentence]
+               *Key Finding:* [Use exact numbers]
+               *Insight:* [Actionable takeaway]
                
-               *Key Finding:* [Use exact numbers from the data]
-               
-               *Insight:* [Actionable business/medical takeaway]
-               
-            2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. 
-               CRITICAL: You MUST write at least 3 to 4 highly detailed, sophisticated sentences for each of these three keys. Do not be brief. Think deeply about the business impact.
+            2. "strategy_brief": "descriptive", "predictive", and "prescriptive" keys with highly detailed paragraphs.
 
-            3. "visualizations": An array of exactly 1 to 3 chart objects.
-               - AUTONOMY: Choose the MOST APPROPRIATE chart type for the data (e.g., 'line' for trends, 'bar' for comparisons, 'scatter' for distributions, 'pie' for proportions, 'heatmap' for correlation matrices).
-               - FORMAT: Each object MUST be a strictly valid Plotly.js JSON configuration containing "data" and "layout".
-               - RULE 1 (Comparisons): If comparing multiple categories (e.g., Male vs Female), you MUST use MULTIPLE traces in the "data" array so they are colored differently. (If using bar charts, include "barmode": "group" in layout).
-               - RULE 2 (The Heatmap Trap): IF you choose to generate a heatmap, the "z" property MUST be a nested 2D matrix (array of arrays), NOT a flat 1D list. (Example: "z": [[1.5, 2.0], [3.1, 0.5]]). DO NOT output a flat 1D array for "z" or the UI will crash.
-               - AESTHETICS: Provide a clear "title" and axis labels in the "layout".
+            3. "visualizations": An array of 1 to 3 strictly valid Plotly.js chart objects ("data" and "layout").
+               - TRUE AUTONOMY: Analyze the user's request and the provided data. Choose the ABSOLUTE BEST visualization type from the entire Plotly library (e.g., scatter, bar, box, violin, heatmap, bubble, pie, line, etc.).
+               - DATA MAPPING: Use the 'SQL Execution Results' for aggregations/trends. Use the 'Statistical Profile' for matrices/correlations.
+               - TOPOLOGY RULES (CRITICAL TO PREVENT UI CRASHES): You must perfectly map the data into Plotly's expected mathematical shapes. 
+                 * For 1D plots (bar, scatter, pie), 'x' and 'y' must be flat arrays [1, 2, 3].
+                 * For categorical comparisons in bar charts, use multiple traces and layout: {{"barmode": "group"}}.
+                 * For 2D matrix plots (heatmap, contour), the 'z' property MUST be a 2D nested matrix [[1, 2], [3, 4]].
             """
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
             final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
