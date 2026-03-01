@@ -118,8 +118,8 @@ def lambda_handler(event, context):
             Mathematical Results Extracted: {json.dumps(data_sample)}
 
             Act as an elite Principal Data Scientist at McKinsey. 
-            Output a JSON object with EXACTLY these keys:
-            
+            You MUST output a strictly valid JSON object with EXACTLY these three keys: "main_answers", "strategy_brief", and "visualizations".
+
             1. "main_answers": Direct answers formatted EXACTLY like this (USE DOUBLE NEWLINES between lines):
                **Scenario [X]: [Title]**
                
@@ -131,12 +131,13 @@ def lambda_handler(event, context):
                
             2. "strategy_brief": An object with "descriptive", "predictive", and "prescriptive" keys. 
                CRITICAL: You MUST write at least 3 to 4 highly detailed, sophisticated sentences for each of these three keys. Do not be brief. Think deeply about the business impact.
-            
+
             3. "visualizations": An array of exactly 1 to 3 chart objects.
-               Each object MUST be a strictly valid Plotly.js JSON configuration.
-               - If comparing categories (like Male vs Female), use MULTIPLE traces in the "data" array.
-               - In the "layout", include "barmode": "group" for bar charts.
-               - For Heatmaps, include "colorscale": "Viridis".
+               - AUTONOMY: Choose the MOST APPROPRIATE chart type for the data (e.g., 'line' for trends, 'bar' for comparisons, 'scatter' for distributions, 'pie' for proportions, 'heatmap' for correlation matrices).
+               - FORMAT: Each object MUST be a strictly valid Plotly.js JSON configuration containing "data" and "layout".
+               - RULE 1 (Comparisons): If comparing multiple categories (e.g., Male vs Female), you MUST use MULTIPLE traces in the "data" array so they are colored differently. (If using bar charts, include "barmode": "group" in layout).
+               - RULE 2 (The Heatmap Trap): IF you choose to generate a heatmap, the "z" property MUST be a nested 2D matrix (array of arrays), NOT a flat 1D list. (Example: "z": [[1.5, 2.0], [3.1, 0.5]]). DO NOT output a flat 1D array for "z" or the UI will crash.
+               - AESTHETICS: Provide a clear "title" and axis labels in the "layout".
             """
             final_system = "You are an elite Business Strategist. Output strictly valid JSON."
             final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
