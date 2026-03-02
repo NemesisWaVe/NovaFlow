@@ -5,6 +5,7 @@ import io
 import sqlite3
 import re
 import pandas as pd 
+
 dynamodb = boto3.resource('dynamodb')
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
@@ -49,38 +50,29 @@ def lambda_handler(event, context):
             update_status(table, task_id, "ingesting", "Executing Pandas preprocessing: Imputing nulls and coercing types...")
             s3_response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=file_key)
             
-            # 1. Load data directly into a Pandas DataFrame (Limit to 50k rows for memory safety)
             df = pd.read_csv(s3_response['Body'], nrows=50000)
             initial_rows = len(df)
             
-            # 2. The Auto-Cleaner: Drop completely empty rows and columns
             df.dropna(axis=1, how='all', inplace=True)
             df.dropna(axis=0, how='all', inplace=True)
             
-            # 3. Schema Normalization: Clean column headers (no spaces, all lowercase)
             df.columns = [re.sub(r'\W+', '_', str(col).strip().lower()) for col in df.columns]
             
-            # 4. Smart Imputation: Fix dirty data autonomously
             for col in df.columns:
                 if pd.api.types.is_numeric_dtype(df[col]):
-                    # If numbers are missing, fill them with the column's Median value
                     df[col] = df[col].fillna(df[col].median())
                 else:
-                    # If text is missing, label it 'Unknown' and strip trailing spaces
                     df[col] = df[col].fillna('Unknown').astype(str).str.strip()
             
             final_rows = len(df)
-            preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns. Nulls imputed via median/mode."
+            preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns."
 
-            # 4.5 SILENT TELEMETRY: Pre-calculate the Correlation Matrix for the AI
             try:
                 corr_matrix = df.corr(numeric_only=True).round(2).to_dict()
-                preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows. Sanitized {len(df.columns)} columns. Pearson matrix computed."
+                preprocessing_telemetry += " Pearson matrix computed."
             except Exception:
                 corr_matrix = {"error": "Could not compute correlation matrix"}
-                preprocessing_telemetry = f"Ingested {initial_rows} rows. Dropped {initial_rows - final_rows} empty rows."
 
-            # 5. Load the mathematically sound data into SQLite
             conn = sqlite3.connect(':memory:')
             df.to_sql('dataset', conn, index=False, if_exists='replace')
             cursor = conn.cursor()
@@ -119,36 +111,139 @@ def lambda_handler(event, context):
                     data_sample[f"Query_{i+1}_Error"] = str(db_e)
                     update_status(table, task_id, "executing", f"Error in query {i+1}: {str(db_e)}", raw_sql)
 
-            # PHASE 4: SYNTHESIS & VISUALIZATION (UPGRADED FOR ENTERPRISE CHARTS)
-            update_status(table, task_id, "synthesizing", "Data extracted. Generating Plotly schemas and McKinsey-style brief...")
-            final_prompt = f"""
+            # PHASE 4: THE DETERMINISTIC THREADED ENGINE
+            import plotly.express as px
+            import plotly.graph_objects as go
+            
+            update_status(table, task_id, "synthesizing", "Generating threaded analytical points and strategy brief...")
+            
+            # --- FEATURE FILTER ---
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            feature_blacklist = ['patient_id', 'member_id', 'year_received', 'birth_year', 'record_index']
+            clean_feature_cols = [col for col in numeric_cols if col.lower() not in feature_blacklist]
+
+            # --- AGENT 1: THE STRATEGIST ---
+            prompt_strategy = f"""
             User Request: {user_prompt}
-            SQL Execution Results: {json.dumps(data_sample)}
-            Dataset Statistical Profile (Correlations): {json.dumps(corr_matrix)}
-
-            Act as an autonomous Principal Data Scientist. You have full access to the Plotly.js ecosystem.
-            Output a strictly valid JSON object with "main_answers", "strategy_brief", and "visualizations".
-
-            1. "main_answers": Direct answers formatted EXACTLY like this (USE DOUBLE NEWLINES between lines):
-               **Scenario [X]: [Title]**
-               *Analysis Goal:* [1 sentence]
-               *Key Finding:* [Use exact numbers]
-               *Insight:* [Actionable takeaway]
-               
-            2. "strategy_brief": "descriptive", "predictive", and "prescriptive" keys with highly detailed paragraphs.
-
-            3. "visualizations": An array of 1 to 3 strictly valid Plotly.js chart objects ("data" and "layout").
-               - TRUE AUTONOMY: Analyze the user's request and the provided data. Choose the ABSOLUTE BEST visualization type from the entire Plotly library (e.g., scatter, bar, box, violin, heatmap, bubble, pie, line, etc.).
-               - DATA MAPPING: Use the 'SQL Execution Results' for aggregations/trends. Use the 'Statistical Profile' for matrices/correlations.
-               - TOPOLOGY RULES (CRITICAL TO PREVENT UI CRASHES): You must perfectly map the data into Plotly's expected mathematical shapes. 
-                 * For 1D plots (bar, scatter, pie), 'x' and 'y' must be flat arrays [1, 2, 3].
-                 * For categorical comparisons in bar charts, use multiple traces and layout: {{"barmode": "group"}}.
-                 * For 2D matrix plots (heatmap, contour), the 'z' property MUST be a 2D nested matrix [[1, 2], [3, 4]].
+            
+            Output a STRICTLY VALID JSON object with exactly two root keys: "strategy_brief" and "point_analyses".
+            
+            Format exactly like this:
+            {{
+                "strategy_brief": {{
+                    "descriptive": "Detailed paragraph.",
+                    "predictive": "Detailed paragraph.",
+                    "prescriptive": "Detailed paragraph."
+                }},
+                "point_analyses": [
+                    {{
+                        "point_id": "point_1",
+                        "point_title": "Scenario 1",
+                        "point_answers": "Use rich **markdown** with bullet points for insights.",
+                        "chart_type": "bar",
+                        "x_col": "{clean_feature_cols[0] if clean_feature_cols else 'x'}",
+                        "y_col": "MUST BE A NUMERIC COLUMN OR 'count'",
+                        "color_col": null
+                    }},
+                    {{
+                        "point_id": "point_2",
+                        "point_title": "Scenario 2",
+                        "point_answers": "Use rich **markdown** with bullet points for insights.",
+                        "chart_type": "scatter",
+                        "x_col": "{clean_feature_cols[0] if clean_feature_cols else 'x'}",
+                        "y_col": "MUST BE A NUMERIC COLUMN OR 'count'",
+                        "color_col": null
+                    }},
+                    {{
+                        "point_id": "point_3",
+                        "point_title": "Correlation Matrix",
+                        "point_answers": "Use rich **markdown** with bullet points for insights.",
+                        "chart_type": "heatmap",
+                        "x_col": null,
+                        "y_col": null,
+                        "color_col": null
+                    }}
+                ]
+            }}
             """
-            final_system = "You are an elite Business Strategist. Output strictly valid JSON."
-            final_response = invoke_nova(final_prompt, final_system).strip().replace('```json', '').replace('```', '')
-            ai_output = json.loads(final_response)
-            update_status(table, task_id, "synthesizing", "Analysis complete. Preparing visualizations...", raw_sql)
+            sys_strategy = "You are a JSON formatter. Output ONLY valid JSON. Ensure y_col is always a numeric metric."
+            res_strategy = invoke_nova(prompt_strategy, sys_strategy).strip().replace('```json', '').replace('```', '')
+            
+            # Parse everything safely
+            point_analyses = []
+            strategy_brief = {}
+            try:
+                parsed_res = json.loads(res_strategy, strict=False)
+                strategy_brief = parsed_res.get("strategy_brief", {})
+                point_analyses = parsed_res.get("point_analyses", [])
+                if isinstance(point_analyses, dict):
+                    point_analyses = [point_analyses]
+            except Exception as e:
+                print(f"JSON Parse Error: {e}. Raw: {res_strategy}")
+                point_analyses = [{"point_id": "error", "point_title": "Analysis Error", "point_answers": "Failed to parse AI output.", "chart_type": "heatmap"}]
+
+            # --- DETERMINISTIC CHART ENGINE ---
+            linked_chart_jsons = []
+            
+            for index, point in enumerate(point_analyses):
+                c_json = {}
+                p_id = point.get("point_id", f"point_{index}")
+                p_title = point.get("point_title", "Data View")
+                c_type = point.get("chart_type", "bar")
+                
+                try:
+                    if c_type == "heatmap":
+                        df_corr = df[clean_feature_cols].corr().round(2)
+                        fig = px.imshow(df_corr, text_auto='.2f', aspect='auto', color_continuous_scale='RdBu_r')
+                    
+                    else:
+                        query_key = f"Query_{index + 1}"
+                        query_data = data_sample.get(query_key, data_sample.get('Query_1', []))
+                        df_chart = pd.DataFrame(query_data)
+                        
+                        x_col = point.get("x_col")
+                        y_col = point.get("y_col")
+                        color_col = point.get("color_col")
+                        
+                        if df_chart.empty:
+                            df_chart = pd.DataFrame({"x": ["No Data"], "y": [0]})
+                            x_col, y_col, color_col = "x", "y", None
+                        else:
+                            if x_col not in df_chart.columns: x_col = df_chart.columns[0]
+                            if y_col not in df_chart.columns: y_col = df_chart.columns[1] if len(df_chart.columns) > 1 else df_chart.columns[0]
+                            if color_col not in df_chart.columns: color_col = None
+
+                            # THE ARMOR: Force Y-Axis to be numeric for Bar/Scatter
+                            if not pd.api.types.is_numeric_dtype(df_chart[y_col]):
+                                num_cols = df_chart.select_dtypes(include='number').columns
+                                if len(num_cols) > 0:
+                                    y_col = num_cols[0] # Override with a safe number
+
+                        if c_type == "scatter":
+                            fig = px.scatter(df_chart, x=x_col, y=y_col, color=color_col)
+                            fig.update_traces(marker=dict(size=10)) 
+                        else:
+                            fig = px.bar(df_chart, x=x_col, y=y_col, color=color_col, barmode='group')
+                    
+                    # Enterprise Theme
+                    fig.update_layout(
+                        template='plotly_dark', 
+                        paper_bgcolor='rgba(0,0,0,0)', 
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        title='', # Let React handle the title
+                        margin=dict(t=20, b=50, l=50, r=20)
+                    )
+                    c_json = json.loads(fig.to_json())
+                    c_json["meta"] = {"scenario_id": p_id}
+                    
+                except Exception as chart_e:
+                    print(f"Chart Failed on {p_id}: {chart_e}")
+                    fig_e = px.bar(x=["Error"], y=[0])
+                    fig_e.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    c_json = json.loads(fig_e.to_json())
+                    c_json["meta"] = {"scenario_id": p_id}
+
+                linked_chart_jsons.append(c_json)
 
             # PHASE 5: COMPLETION
             table.update_item(
@@ -157,15 +252,16 @@ def lambda_handler(event, context):
                 ExpressionAttributeValues={
                     ':s': 'completed',
                     ':a': json.dumps({
-                        "main_answers": ai_output.get("main_answers", ""),
-                        "strategy_brief": ai_output.get("strategy_brief", {}),
-                        "raw_sql": raw_sql, # PASSING THE REAL SQL
-                        "preprocessing_log": preprocessing_telemetry # PASSING THE CLEANING STATS
+                        "strategy_brief": strategy_brief,
+                        "point_analyses": point_analyses,
+                        "raw_sql": raw_sql,
+                        "preprocessing_log": preprocessing_telemetry
                     }),
-                    ':c': json.dumps(ai_output.get("visualizations", [])),
+                    ':c': json.dumps(linked_chart_jsons), 
                     ':p': 'done'
                 }
             )
+
         except Exception as e:
             print(f"CRITICAL SYSTEM CRASH: {str(e)}")
             table.update_item(
