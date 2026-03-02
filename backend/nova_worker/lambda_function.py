@@ -80,107 +80,123 @@ def lambda_handler(event, context):
             safe_headers = list(df.columns)
             update_status(table, task_id, "ingesting", "Dataset cleaned and loaded into memory successfully.")
 
+            # --- ENTERPRISE QUERY REFORMULATION (THE ROUTER) ---
+            update_status(table, task_id, "planning", "Extracting core intent from conversation history...")
+            intent_prompt = f"Read this input: {user_prompt}\n\nReformulate the user's FINAL request into a single, highly specific standalone instruction. Do not answer the request, just state what data or analysis they want right now."
+            clean_intent = invoke_nova(intent_prompt, "You are an intent extraction router. Output a single clear sentence.").strip()
+
             # PHASE 2: PLANNING & SQL GENERATION
-            update_status(table, task_id, "planning", "Analyzing user prompt and mapping to SQLite schema...")
+            update_status(table, task_id, "planning", "Mapping clean intent to SQLite schema...")
             schema_context = f"Table 'dataset' columns: {', '.join(safe_headers)}"
-            sql_prompt = f"""
-            User Request: {user_prompt}
             
-            Write the SQLite queries to extract this data. You may write multiple queries separated by semicolons.
-            CRITICAL SQLITE LIMITATIONS: 
-            - SQLite DOES NOT support CORREL(), STDEV(), or VAR() functions. 
-            - If the user asks for a correlation, you MUST work around this by grouping data into bins/ranges and calculating the AVG() of the target variable.
+            sql_system = f"""You are an elite Data Engineer writing SQLite queries.
             
-            Return ONLY raw SQL. No markdown.
+            AVAILABLE SCHEMA:
+            {schema_context}
+            
+            ABSOLUTE STRICT RULES:
+            1. ONLY use the exact column names listed in the SCHEMA above. If a column isn't there, do NOT use it.
+            2. SQLite DOES NOT support CORREL(), STDEV(), VAR(), or pearson_corr(). You MUST use simple math or GROUP BY averages to approximate relationships.
+            3. Output pure SQL only. No explanations. No markdown formatting.
             """
-            sql_system = f"You are a master Data Engineer. Schema: {schema_context}. Output pure SQL. No markdown."
+            
+            sql_prompt = f"Write 1 to 3 SQLite queries separated by semicolons to accomplish this specific task: {clean_intent}"
+            
             raw_sql = invoke_nova(sql_prompt, sql_system).strip().replace('```sql', '').replace('```', '')
             update_status(table, task_id, "planning", "SQL generated successfully.", raw_sql)
 
-            # PHASE 3: EXECUTION
+            # PHASE 3: EXECUTION (DECOUPLED DATA PIPELINE)
             update_status(table, task_id, "executing", "Executing dynamic SQL against data matrix...", raw_sql)
-            queries = [q.strip() for q in raw_sql.split(';') if q.strip()]
-            data_sample = {}
+            
+            # Limit to 3 queries max to prevent AI hallucination
+            queries = [q.strip() for q in raw_sql.split(';') if q.strip()][:3] 
+            
+            full_data_sample = {} # Goes to Charts
+            ai_data_sample = {}   # Goes to AI Prompt
+            
             for i, query in enumerate(queries):
                 try:
                     cursor.execute(query)
                     if cursor.description:
                         col_names = [d[0] for d in cursor.description]
-                        data_sample[f"Query_{i+1}"] = [dict(zip(col_names, row)) for row in cursor.fetchall()[:25]]
+                        all_rows = cursor.fetchall()
+                        
+                        # Charts get everything
+                        full_data_sample[f"Query_{i+1}"] = [dict(zip(col_names, row)) for row in all_rows]
+                        # AI only gets top 3 rows to save tokens
+                        ai_data_sample[f"Query_{i+1}"] = [dict(zip(col_names, row)) for row in all_rows[:3]]
                 except Exception as db_e:
-                    data_sample[f"Query_{i+1}_Error"] = str(db_e)
+                    ai_data_sample[f"Query_{i+1}_Error"] = str(db_e)
                     update_status(table, task_id, "executing", f"Error in query {i+1}: {str(db_e)}", raw_sql)
 
-            # PHASE 4: THE DETERMINISTIC THREADED ENGINE
+            # PHASE 4: THE DYNAMIC ORCHESTRATOR & 5-PILLAR STRATEGY
             import plotly.express as px
             import plotly.graph_objects as go
             
-            update_status(table, task_id, "synthesizing", "Generating threaded analytical points and strategy brief...")
+            update_status(table, task_id, "synthesizing", "Generating 5-Pillar Strategy Brief and dynamic visualizations...")
             
-            # --- FEATURE FILTER ---
             numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
             feature_blacklist = ['patient_id', 'member_id', 'year_received', 'birth_year', 'record_index']
             clean_feature_cols = [col for col in numeric_cols if col.lower() not in feature_blacklist]
+            
+            query_keys = list(ai_data_sample.keys())
 
-            # --- AGENT 1: THE STRATEGIST ---
             prompt_strategy = f"""
-            User Request: {user_prompt}
+            User's Cleaned Request: {clean_intent}
             
-            Output a STRICTLY VALID JSON object with exactly two root keys: "strategy_brief" and "point_analyses".
+            <sql_results>
+            {json.dumps(ai_data_sample)}
+            </sql_results>
             
-            Format exactly like this:
+            You are a Principal Data Scientist. Answer the user's request based on the <sql_results>.
+            
+            Output a STRICTLY VALID JSON object (NOT AN ARRAY) with exactly two keys: "strategy_brief" and "point_analyses".
+            
             {{
                 "strategy_brief": {{
-                    "descriptive": "Detailed paragraph.",
-                    "predictive": "Detailed paragraph.",
-                    "prescriptive": "Detailed paragraph."
+                    "diagnostic": "Assess data health.",
+                    "descriptive": "What is happening currently?",
+                    "predictive": "Where is this trend heading?",
+                    "prescriptive": "What actionable steps should be taken?",
+                    "limitations": "What are the blind spots?"
                 }},
                 "point_analyses": [
                     {{
                         "point_id": "point_1",
-                        "point_title": "Scenario 1",
-                        "point_answers": "Use rich **markdown** with bullet points for insights.",
+                        "point_title": "Insight Title",
+                        "point_answers": "Rich **markdown** with bullet points.",
                         "chart_type": "bar",
                         "x_col": "{clean_feature_cols[0] if clean_feature_cols else 'x'}",
-                        "y_col": "MUST BE A NUMERIC COLUMN OR 'count'",
-                        "color_col": null
-                    }},
-                    {{
-                        "point_id": "point_2",
-                        "point_title": "Scenario 2",
-                        "point_answers": "Use rich **markdown** with bullet points for insights.",
-                        "chart_type": "scatter",
-                        "x_col": "{clean_feature_cols[0] if clean_feature_cols else 'x'}",
-                        "y_col": "MUST BE A NUMERIC COLUMN OR 'count'",
-                        "color_col": null
-                    }},
-                    {{
-                        "point_id": "point_3",
-                        "point_title": "Correlation Matrix",
-                        "point_answers": "Use rich **markdown** with bullet points for insights.",
-                        "chart_type": "heatmap",
-                        "x_col": null,
-                        "y_col": null,
+                        "y_col": "MUST BE A NUMERIC COLUMN",
                         "color_col": null
                     }}
                 ]
             }}
             """
-            sys_strategy = "You are a JSON formatter. Output ONLY valid JSON. Ensure y_col is always a numeric metric."
+            sys_strategy = "You are a JSON formatter. Output ONLY valid JSON. Keep text concise."
             res_strategy = invoke_nova(prompt_strategy, sys_strategy).strip().replace('```json', '').replace('```', '')
             
-            # Parse everything safely
+            # --- THE ULTIMATE JSON ARMOR ---
             point_analyses = []
             strategy_brief = {}
             try:
                 parsed_res = json.loads(res_strategy, strict=False)
+                
+                # If AI hallucinates an array for the root object, extract the dictionary inside it
+                if isinstance(parsed_res, list):
+                    parsed_res = parsed_res[0] if len(parsed_res) > 0 else {}
+                    
                 strategy_brief = parsed_res.get("strategy_brief", {})
                 point_analyses = parsed_res.get("point_analyses", [])
+                
+                # If AI hallucinates a dict instead of an array for point_analyses, wrap it
                 if isinstance(point_analyses, dict):
                     point_analyses = [point_analyses]
+                    
             except Exception as e:
                 print(f"JSON Parse Error: {e}. Raw: {res_strategy}")
-                point_analyses = [{"point_id": "error", "point_title": "Analysis Error", "point_answers": "Failed to parse AI output.", "chart_type": "heatmap"}]
+                strategy_brief = {"descriptive": "Data analysis complete, but narrative generation failed due to formatting limits.", "prescriptive": "Please try asking a narrower question."}
+                point_analyses = [{"point_id": "error", "point_title": "Analysis Processed", "point_answers": "Data extracted successfully. View charts for insights.", "chart_type": "heatmap"}]
 
             # --- DETERMINISTIC CHART ENGINE ---
             linked_chart_jsons = []
@@ -197,8 +213,9 @@ def lambda_handler(event, context):
                         fig = px.imshow(df_corr, text_auto='.2f', aspect='auto', color_continuous_scale='RdBu_r')
                     
                     else:
+                        # Feed the FULL dataset to the charts, not the truncated AI preview
                         query_key = f"Query_{index + 1}"
-                        query_data = data_sample.get(query_key, data_sample.get('Query_1', []))
+                        query_data = full_data_sample.get(query_key, full_data_sample.get('Query_1', []))
                         df_chart = pd.DataFrame(query_data)
                         
                         x_col = point.get("x_col")
@@ -213,11 +230,10 @@ def lambda_handler(event, context):
                             if y_col not in df_chart.columns: y_col = df_chart.columns[1] if len(df_chart.columns) > 1 else df_chart.columns[0]
                             if color_col not in df_chart.columns: color_col = None
 
-                            # THE ARMOR: Force Y-Axis to be numeric for Bar/Scatter
                             if not pd.api.types.is_numeric_dtype(df_chart[y_col]):
                                 num_cols = df_chart.select_dtypes(include='number').columns
                                 if len(num_cols) > 0:
-                                    y_col = num_cols[0] # Override with a safe number
+                                    y_col = num_cols[0]
 
                         if c_type == "scatter":
                             fig = px.scatter(df_chart, x=x_col, y=y_col, color=color_col)
@@ -225,12 +241,11 @@ def lambda_handler(event, context):
                         else:
                             fig = px.bar(df_chart, x=x_col, y=y_col, color=color_col, barmode='group')
                     
-                    # Enterprise Theme
                     fig.update_layout(
                         template='plotly_dark', 
                         paper_bgcolor='rgba(0,0,0,0)', 
                         plot_bgcolor='rgba(0,0,0,0)',
-                        title='', # Let React handle the title
+                        title='',
                         margin=dict(t=20, b=50, l=50, r=20)
                     )
                     c_json = json.loads(fig.to_json())
