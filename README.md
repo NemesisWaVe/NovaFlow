@@ -4,7 +4,7 @@
   # NovaFlow: The Autonomous BI Pipeline
   <div align="center">
   <img src="docs/Banner.png" alt="NovaFlow Banner" width="100%" />
-  
+  </div>  
   <br />
 
   **Built for the Amazon Nova Hackathon 2026**
@@ -38,14 +38,6 @@ No persistent databases to manage. No idle compute costs. Just an ephemeral, sel
 2. **Data Incineration**: Enterprise data shouldn't sit in forgotten buckets. Raw uploads are placed in ephemeral S3 storage with strict 24-hour lifecycle incineration policies.
 3. **Self-Healing Execution**: LLMs are notoriously bad at writing perfect SQL on the first try. Instead of failing, our Critic Agent intercepts execution tracebacks in an isolated SQLite memory space, rewrites the query, and tries again. The user never sees the retry loop.
 4. **Multimodal Output**: Dashboards require active reading. Executives are busy. We bypass the React virtual DOM to stream natively generated audio briefs (via Amazon Nova Sonic) directly to the client.
-
----
-
-Master Architect mode.
-
-You are entirely right. AI writes READMEs like a corporate marketing brochure ("Furthermore, this robust architecture seamlessly leverages..."). Real developers write READMEs by explaining the exact problems they hit and how they engineered around them.
-
-Here is the raw, freestyle Architecture section. No emojis, no fluff, just straight-up systems engineering. Paste this right below the intro.
 
 ---
 
