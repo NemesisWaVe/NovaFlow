@@ -2,10 +2,14 @@
   <img src="frontend/public/novaflow.svg" alt="NovaFlow Logo" width="120" height="120" />
   
   # NovaFlow: The Autonomous BI Pipeline
+  <div align="center">
+  <img src="docs/banner.jpg" alt="NovaFlow Banner" width="100%" />
   
+  <br />
+
   **Built for the Amazon Nova Hackathon 2026**
 
-  ** Live Demo: [https://novaflow.vercel.app](https://novaflow.vercel.app)**
+  **Live Demo: [https://novaflow.vercel.app](https://nova-flow-bi.vercel.app)**
   
   [![Vercel Edge](https://img.shields.io/badge/Deployed_on-Vercel-black?logo=vercel)](#)
   [![AWS Serverless](https://img.shields.io/badge/Architecture-AWS_Serverless-FF9900?logo=amazonaws)](#)
@@ -90,7 +94,7 @@ When SQS triggers the Worker Lambda, it pulls the raw CSV from S3 and mounts it 
 
 LLMs hallucinate. Even the good ones will eventually mess up a JOIN or invent a column name that doesn't exist.
 
-Instead of passing a 500 error back to the UI when the SQL fails, we built a self-healing loop. If the `sqlite3` engine throws a Python traceback error, the Lambda catches it. It feeds that exact traceback right back to Nova Lite as a "Critic" prompt, forcing the model to rewrite the broken SQL. It loops this until the query executes cleanly. The user never sees the retry process—they just get the right answer.
+Instead of passing a 500 error back to the UI when the SQL fails, we built a self-healing loop. If the `sqlite3` engine throws a Python traceback error, the Lambda catches it. It feeds that exact traceback right back to Nova Lite as a "Critic" prompt, forcing the model to rewrite the broken SQL. It loops this until the query executes cleanly. The user never sees the retry process, they just get the right answer.
 
 ### 4. State Management & Audio Streaming
 
