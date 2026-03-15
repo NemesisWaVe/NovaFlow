@@ -10,6 +10,8 @@
   **Built for the Amazon Nova Hackathon 2026**
 
   **Live Demo: [https://novaflow.vercel.app](https://nova-flow-bi.vercel.app)**
+  **YT demo: https://youtu.be/85TeXfFqq9U**
+  **Blogpost: https://builder.aws.com/content/3AwnEbeyzEM3ZUpDGGctUhDKfLn/automating-ad-hoc-analytics-building-a-self-correcting-data-agent-with-amazon-nova**
   
   [![Vercel Edge](https://img.shields.io/badge/Deployed_on-Vercel-black?logo=vercel)](#)
   [![AWS Serverless](https://img.shields.io/badge/Architecture-AWS_Serverless-FF9900?logo=amazonaws)](#)
