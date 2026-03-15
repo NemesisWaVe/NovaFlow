@@ -18,7 +18,7 @@
     <img src="https://img.shields.io/badge/Watch_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Demo" />
   </a>
   
-  <a href="Blogpost: https://builder.aws.com/content/3AwnEbeyzEM3ZUpDGGctUhDKfLn/automating-ad-hoc-analytics-building-a-self-correcting-data-agent-with-amazon-nova">
+  <a href="https://builder.aws.com/content/3AwnEbeyzEM3ZUpDGGctUhDKfLn/automating-ad-hoc-analytics-building-a-self-correcting-data-agent-with-amazon-nova">
     <img src="https://img.shields.io/badge/Read_the_Blog-232F3E?style=for-the-badge&logo=amazonaws&logoColor=white" alt="AWS Blog Post" />
   </a>
 
