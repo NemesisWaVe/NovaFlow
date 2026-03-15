@@ -8,11 +8,23 @@
   <br />
 
   **Built for the Amazon Nova Hackathon 2026**
+<div align="center">
 
-  **Live Demo: [https://novaflow.vercel.app](https://nova-flow-bi.vercel.app)**
-  **YT demo: https://youtu.be/85TeXfFqq9U**
-  **Blogpost: https://builder.aws.com/content/3AwnEbeyzEM3ZUpDGGctUhDKfLn/automating-ad-hoc-analytics-building-a-self-correcting-data-agent-with-amazon-nova**
+  <a href="https://nova-flow-bi.vercel.app">
+    <img src="https://img.shields.io/badge/LIVE_DEMO-10B981?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
+  </a>
   
+  <a href="https://youtu.be/85TeXfFqq9U">
+    <img src="https://img.shields.io/badge/Watch_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Demo" />
+  </a>
+  
+  <a href="Blogpost: https://builder.aws.com/content/3AwnEbeyzEM3ZUpDGGctUhDKfLn/automating-ad-hoc-analytics-building-a-self-correcting-data-agent-with-amazon-nova">
+    <img src="https://img.shields.io/badge/Read_the_Blog-232F3E?style=for-the-badge&logo=amazonaws&logoColor=white" alt="AWS Blog Post" />
+  </a>
+
+</div>
+<br/>
+
   [![Vercel Edge](https://img.shields.io/badge/Deployed_on-Vercel-black?logo=vercel)](#)
   [![AWS Serverless](https://img.shields.io/badge/Architecture-AWS_Serverless-FF9900?logo=amazonaws)](#)
   [![Amazon Bedrock](https://img.shields.io/badge/AI_Core-Amazon_Nova-00A4A6)](#)
