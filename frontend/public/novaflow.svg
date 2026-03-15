@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="40" height="40">
+  <rect width="100" height="100" rx="20" fill="#09090b" />
+
+  <defs>
+    <filter id="premiumGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <linearGradient id="emeraldFlow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#047857" /> <stop offset="50%" stop-color="#10b981" /> <stop offset="100%" stop-color="#34d399" /> </linearGradient>
+  </defs>
+
+  <path d="M 28 75 L 28 25 L 72 75 L 72 25" 
+        fill="none" 
+        stroke="#10b981" 
+        stroke-width="12" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" 
+        filter="url(#premiumGlow)" 
+        opacity="0.35" />
+
+  <path d="M 28 75 L 28 25 L 72 75 L 72 25" 
+        fill="none" 
+        stroke="url(#emeraldFlow)" 
+        stroke-width="12" 
+        stroke-linejoin="round" 
+        stroke-linecap="round" />
+
+  <circle cx="72" cy="25" r="5" fill="#ffffff" filter="url(#premiumGlow)" />
+  <circle cx="72" cy="25" r="3" fill="#10b981" />
+</svg>
