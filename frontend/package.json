@@ -20,7 +20,7 @@
     "react-dom": "latest",
     "react-markdown": "latest",
     "react-plotly.js": "latest"
-}
+},
   "devDependencies": {
     "@vitejs/plugin-react": "latest",
     "@tailwindcss/vite": "^4.0.0",
