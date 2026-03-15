@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, Terminal, ChevronRight, Lock, Activity, Database, LayoutPanelLeft, Cpu, Settings, User, X, MessageSquare, PanelLeftClose, Maximize2, Minimize2, Volume2, Mic, Trash2, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ReactMarkdown from 'react-markdown';
-import Plot from 'react-plotly.js';
+import OriginalMarkdown from 'react-markdown';
+import OriginalPlot from 'react-plotly.js';
+const ReactMarkdown = OriginalMarkdown.default || OriginalMarkdown;
+const Plot = OriginalPlot.default || OriginalPlot;
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
