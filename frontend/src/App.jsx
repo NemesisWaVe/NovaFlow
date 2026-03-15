@@ -1067,7 +1067,8 @@ export default function NovaFlowDashboard() {
 
     const MAX_ANON = 3;
     const MAX_LEAD = 15;
-    const isGodMode = userEmail === import.meta.env.VITE_ADMIN_EMAIL;
+    const adminEmails = (import.meta.env.VITE_ADMIN_EMAIL || "").split(",");
+const isGodMode = adminEmails.includes(userEmail);
     const quotaLimit = isGodMode ? 9999 : (userEmail ? MAX_LEAD : MAX_ANON);
 
     const handleFileUpload = (e) => {
