@@ -3,7 +3,7 @@
   
   # NovaFlow: The Autonomous BI Pipeline
   <div align="center">
-  <img src="docs/banner.png" alt="NovaFlow Banner" width="100%" />
+  <img src="docs/Banner.png" alt="NovaFlow Banner" width="100%" />
   
   <br />
 
