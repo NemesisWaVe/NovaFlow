@@ -35,7 +35,6 @@ def update_status(table, task_id, phase, log_message, sql=None, execution_log_ap
     try:
         table.update_item(Key={'task_id': task_id}, UpdateExpression=UpdateExp, ExpressionAttributeValues=ExpVals)
     except Exception as e:
-        # FIX: No more silent failures. If DynamoDB chokes, we need it in CloudWatch.
         print(f"CRITICAL ERROR: Failed to update DynamoDB status to {phase}. Error: {e}")
 
 #1 THE NOVA 2 SONIC BIDIRECTIONAL AUDIO ENGINE
@@ -187,7 +186,7 @@ def call_nova(prompt, system_prompt, history=None, require_json=False):
         messages.append({"role": "user", "content": [{"text": prompt}]})
 
     kwargs = {
-        "modelId": "amazon.nova-lite-v1:0",
+        "modelId": "amazon.nova-2-lite-v1:0",
         "messages": messages,
         "system": [{"text": system_prompt}],
         "inferenceConfig": {"temperature": 0.2, "topP": 0.9, "maxTokens": 4000}
