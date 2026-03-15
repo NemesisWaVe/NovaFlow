@@ -3,6 +3,7 @@ import boto3
 import uuid
 import os
 from boto3.dynamodb.conditions import Attr
+from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource('dynamodb')
 sqs = boto3.client('sqs')
@@ -10,7 +11,7 @@ s3 = boto3.client('s3')
 
 TABLE_NAME = os.environ.get('TABLE_NAME', 'NovaFlow_Tasks')
 SQS_QUEUE_URL = os.environ.get('SQS_QUEUE_URL')
-S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'novaflow-data-artifacts-2026')
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'YOUR S3')
 
 def build_response(status_code, body):
     """Helper utility to ensure consistent CORS headers across all responses."""
@@ -29,13 +30,23 @@ def lambda_handler(event, context):
         table = dynamodb.Table(TABLE_NAME)
         body = json.loads(event.get('body', '{}'))
         action = body.get('action')
+        user_id = body.get('user_id', 'anonymous_guest') # Extract early for auth checks
 
-        # Route: Delete Workspace Task
+        # Route: Delete Workspace Task (VULNERABILITY PATCHED: Added IDOR protection)
         if action == 'delete_task':
             task_id = body.get('task_id')
             if task_id:
-                table.delete_item(Key={'task_id': task_id})
-            return build_response(200, {'status': 'deleted'})
+                try:
+                    table.delete_item(
+                        Key={'task_id': task_id},
+                        ConditionExpression=Attr('user_id').eq(user_id) # Only the owner can delete it
+                    )
+                    return build_response(200, {'status': 'deleted'})
+                except ClientError as e:
+                    if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                        return build_response(403, {'error': 'Unauthorized to delete this task'})
+                    raise e
+            return build_response(400, {'error': 'Missing task_id'})
 
         # Route: Secure S3 Direct Upload
         if action == 'get_upload_url':
@@ -55,7 +66,6 @@ def lambda_handler(event, context):
 
         # Route: Fetch User Workspace History
         if action == 'get_history':
-            user_id = body.get('user_id', 'anonymous_guest')
             response = table.scan(FilterExpression=Attr('user_id').eq(user_id))
             items = response.get('Items', [])
             
@@ -88,13 +98,13 @@ def lambda_handler(event, context):
             return build_response(404, {'error': 'Task not found'})
 
         # Route: Task Ingestion & Rate Limiting
-        user_id = body.get('user_id', 'anonymous_guest')
         user_email = body.get('email', None)
         s3_file_key = body.get('file_key', 'unknown.csv')
         user_prompt = body.get('prompt', '')
+        chat_history = body.get('chat_history', []) 
         task_id = str(uuid.uuid4())
         
-        # Enforce usage quotas (Feature flag set to high for demo environments)
+        # Enforce usage quotas
         response = table.scan(FilterExpression=Attr('user_id').eq(user_id))
         questions_asked = len(response.get('Items', []))
         max_allowed = int(os.environ.get('MAX_QUOTA', 9999))
@@ -115,8 +125,13 @@ def lambda_handler(event, context):
 
         table.put_item(Item=item_to_insert)
 
-        # Dispatch to Worker Queue
-        sqs_message = {'task_id': task_id, 'prompt': user_prompt, 'file_key': s3_file_key}
+        # Dispatch to Worker Queue (FIX: Added chat_history to payload)
+        sqs_message = {
+            'task_id': task_id, 
+            'prompt': user_prompt, 
+            'file_key': s3_file_key,
+            'chat_history': chat_history 
+        }
         sqs.send_message(QueueUrl=SQS_QUEUE_URL, MessageBody=json.dumps(sqs_message))
 
         return build_response(202, {'task_id': task_id, 'status': 'pending'})
