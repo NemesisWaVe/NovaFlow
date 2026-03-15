@@ -6,7 +6,6 @@ import Plot from 'react-plotly.js';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
-import logo from './frontend/novaflow.svg';
 // Edge Sound Engine (Web Audio API)
 
 const playSFX = (type) => {
