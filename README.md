@@ -3,7 +3,7 @@
   
   # NovaFlow: The Autonomous BI Pipeline
   <div align="center">
-  <img src="docs/banner.jpg" alt="NovaFlow Banner" width="100%" />
+  <img src="docs/banner.png" alt="NovaFlow Banner" width="100%" />
   
   <br />
 
@@ -142,7 +142,7 @@ Create a `.env` file in the `frontend` directory with your gateway and auth keys
 ```env
 VITE_AWS_API_URL="your-api-gateway-url"
 VITE_CLERK_PUBLISHABLE_KEY="your-clerk-key"
-VITE_ADMIN_EMAIL="judge@novaflow.com,your-email@domain.com"
+VITE_ADMIN_EMAIL="your-email@domain.com"
 
 ```
 
