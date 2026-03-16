@@ -38,7 +38,7 @@ def update_status(table, task_id, phase, log_message, sql=None, execution_log_ap
         print(f"CRITICAL ERROR: Failed to update DynamoDB status to {phase}. Error: {e}")
 
 
-# Audio Engine
+# --- Audio Engine ---
 
 def generate_audio_brief(diagnostic_text, prescriptive_text, task_id):
     raw_text = f"Executive Summary. Diagnostic Analysis: {diagnostic_text} Prescriptive Recommendation: {prescriptive_text}"
@@ -156,7 +156,7 @@ def _generate_polly_audio(text):
     return base64.b64encode(response['AudioStream'].read()).decode('utf-8')
 
 
-# Nova LLM Caller
+# --- Nova LLM Caller ---
 
 def call_nova(prompt, system_prompt, history=None, require_json=False):
     messages = []
@@ -252,7 +252,7 @@ def call_nova(prompt, system_prompt, history=None, require_json=False):
         return ""
 
 
-# Data Profiler
+# --- Data Profiler ---
 
 def autonomous_data_profiler(df):
     ontology_map = {}
@@ -288,7 +288,7 @@ def autonomous_data_profiler(df):
     return df, ontology_map
 
 
-# SQL Cleaner
+# --- SQL Cleaner ---
 
 def clean_sql(raw_text):
     match = re.search(r'`{3}(?:sql)?\n?(.*?)`{3}', raw_text, re.DOTALL | re.IGNORECASE)
@@ -300,7 +300,7 @@ def clean_sql(raw_text):
     return raw_text.strip()
 
 
-# Memory Compressor
+# --- Memory Compressor ---
 
 def compress_memory(new_prompt, chat_history):
     if not chat_history:
@@ -323,7 +323,7 @@ def compress_memory(new_prompt, chat_history):
     return call_nova(rewriter_prompt, rewriter_sys)
 
 
-# SQL Agent
+# --- SQL Agent ---
 
 def generate_sql(system_state, ontology_map, chat_history=None):
     sql_system = f"""You are an elite Data Engineer writing SQLite queries.
@@ -342,37 +342,39 @@ def generate_sql(system_state, ontology_map, chat_history=None):
          "box plot", "boxplot", "violin", "distribution", "compare distributions", "IQR", "spread",
          then Query 1 MUST be RAW DATA — individual rows, NO GROUP BY, NO AVG/COUNT.
          Include the numeric column(s) being compared AND the categorical grouping column.
-         Apply any WHERE filters the user specifies (e.g., WHERE bmi < 25).
+         Apply any WHERE filters the user specifies.
          Append LIMIT 500.
-         Example for "boxplot of insulin by risk category for BMI < 25":
-           SELECT diabetes_risk_category, insulin_level, waist_circumference_cm
-           FROM dataset WHERE bmi < 25 LIMIT 500;
+         Example pattern (use actual column names from the ONTOLOGY MAP — never invent them):
+           SELECT category_col, numeric_col_a, numeric_col_b
+           FROM dataset WHERE filter_col < threshold LIMIT 500;
 
          *** DEFAULT (when no distribution chart is requested) ***
          Use GROUP BY with AVG() or COUNT(). Returns few rows (3-30).
          Best rendered as: bar, pie, or line charts.
 
        - Query 2: PIVOT / CROSS AGGREGATION.
-         If the user asks to compare two variables against a metric (e.g., stress vs sleep vs glucose),
+         If the user asks to compare two variables against a metric (e.g., dim_a vs dim_b vs target_metric),
          use GROUP BY on BOTH dimension columns to produce a grid of averages.
          BINNING RULE FOR PIVOT: If either dimension is a continuous numeric, bin it with CASE WHEN
          before GROUP BY so the grid stays readable (3-5 categories per axis maximum).
-         Example: GROUP BY stress_category, sleep_category with AVG(fasting_glucose_level).
+         Example: GROUP BY dim_a_category, dim_b_category with AVG(target_metric).
          This produces a 2D pivot table. Best rendered as: heatmap.
          If no cross-dimension analysis is needed, write a secondary GROUP BY aggregation.
 
        - Query 3: RAW DATA SAMPLE — MANDATORY RULES:
          a. DO NOT use GROUP BY or any aggregation function (AVG, COUNT, SUM, etc.).
          b. SELECT the individual row-level columns needed for distribution analysis.
-         c. If the user asks for a violin or box plot segmented by a category (e.g., family_history),
-            include BOTH the numeric target column AND the categorical segmentation column(s).
-         d. BINNING RULE: If a continuous numeric column (e.g., blood_pressure, age, bmi) is
-            needed as a segmentation category, DO NOT pass it raw. Bin it with CASE WHEN:
+         c. If the user asks for a violin or box plot segmented by a category, include BOTH
+            the numeric target column AND the categorical segmentation column(s).
+         d. BINNING RULE: If a continuous numeric column is needed as a segmentation category,
+            DO NOT pass it raw. Check its min/max in the ONTOLOGY MAP and bin it with CASE WHEN
+            into 3 meaningful tiers using thresholds that make sense for that column's actual range.
+            Example pattern (adapt column name and thresholds to the real data):
             CASE
-                WHEN blood_pressure < 120 THEN 'Normal'
-                WHEN blood_pressure BETWEEN 120 AND 140 THEN 'Pre-High'
+                WHEN some_numeric_col < low_threshold  THEN 'Low'
+                WHEN some_numeric_col < high_threshold THEN 'Mid'
                 ELSE 'High'
-            END AS bp_category
+            END AS some_numeric_col_tier
             Apply this binning rule to any continuous column used for grouping/coloring in Query 3.
          e. Append LIMIT 300.
 
@@ -384,7 +386,7 @@ def generate_sql(system_state, ontology_map, chat_history=None):
     return clean_sql(raw)
 
 
-# SQL Critic
+# --- SQL Critic ---
 
 def evaluate_and_fix_sql(cursor, initial_sql, ontology_map, task_id, table):
     max_retries = 3
@@ -434,7 +436,7 @@ def evaluate_and_fix_sql(cursor, initial_sql, ontology_map, task_id, table):
     return {"Query_1": {"full": [{"error": f"Failed: {error_encountered}"}], "preview": [{"error": "Failed"}]}}, current_sql
 
 
-# Strategy Synthesizer
+# --- Strategy Synthesizer ---
 
 def synthesize_ontology_structured(ai_data_sample, system_state, clean_feature_cols, correlation_matrix, query_manifest):
     prompt = (
@@ -474,7 +476,7 @@ STRATEGY TEXT RULES:
     return call_nova(prompt, system_prompt, require_json=True)
 
 
-# Smart Title Generator
+# --- Smart Title Generator ---
 
 def generate_smart_title(prompt):
     cleaned_prompt = re.sub(r'(?mi)^(To|From|Subject|Executive Memo):.*$', '', prompt).strip()
@@ -484,7 +486,7 @@ def generate_smart_title(prompt):
     return clean_title if clean_title else "Advanced Data Analysis"
 
 
-# Chart Engine
+# --- Chart Engine ---
 
 DISTRIBUTION_FALLBACK_CHAIN = ["violin", "box", "histogram", "bar"]
 AGGREGATION_FALLBACK_CHAIN = ["bar", "line", "pie"]
@@ -736,7 +738,7 @@ def render_chart_with_fallback(point, full_data_sample, df, clean_feature_cols):
     return _finalise(fig, used_type)
 
 
-# Lambda Handler
+# --- Lambda Handler ---
 
 def lambda_handler(event, context):
     table = dynamodb.Table(TABLE_NAME)
@@ -790,7 +792,10 @@ def lambda_handler(event, context):
 
             update_status(table, task_id, "synthesizing", "Generating Strategy Brief via Constrained Decoding...")
             numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-            clean_feature_cols = [col for col in numeric_cols if col not in ['patient_id', 'member_id', 'record_index']]
+            # Exclude surrogate ID columns — any numeric column whose name suggests it's
+            # a row identifier rather than a meaningful feature (id, index, key, code, num, no)
+            id_patterns = re.compile(r'\b(id|index|key|code|num|no|number|seq|sequence|row)\b', re.IGNORECASE)
+            clean_feature_cols = [col for col in numeric_cols if not id_patterns.search(col)]
             corr_dict = df[clean_feature_cols].corr(numeric_only=True).round(2).to_dict()
 
             parsed_res = synthesize_ontology_structured(
