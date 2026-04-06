@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, Terminal, ChevronRight, Lock, Activity, Database, LayoutPanelLeft, Cpu, Settings, User, X, MessageSquare, PanelLeftClose, Maximize2, Minimize2, Volume2, Mic, Trash2, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import OriginalMarkdown from 'react-markdown';
-import OriginalPlot from 'react-plotly.js';
-const ReactMarkdown = OriginalMarkdown.default || OriginalMarkdown;
-const Plot = OriginalPlot.default || OriginalPlot;
+import ReactMarkdown from 'react-markdown';
+import Plot from 'react-plotly.js';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
+import LandingPage from './LandingPage';
+
 // Edge Sound Engine (Web Audio API)
 
 const playSFX = (type) => {
@@ -929,6 +929,7 @@ export default function NovaFlowDashboard() {
     });
 
     const [showPaywall, setShowPaywall] = useState(false);
+    const [showLanding, setShowLanding] = useState(true);
     const [chatHistory, setChatHistory] = useState([]);
     const [isChatOpen, setIsChatOpen] = useState(true);
     const [processing, setProcessing] = useState(false);
@@ -1068,8 +1069,7 @@ export default function NovaFlowDashboard() {
 
     const MAX_ANON = 3;
     const MAX_LEAD = 15;
-    const adminEmails = (import.meta.env.VITE_ADMIN_EMAIL || "").split(",");
-const isGodMode = adminEmails.includes(userEmail);
+    const isGodMode = userEmail === import.meta.env.VITE_ADMIN_EMAIL;
     const quotaLimit = isGodMode ? 9999 : (userEmail ? MAX_LEAD : MAX_ANON);
 
     const handleFileUpload = (e) => {
@@ -1348,6 +1348,10 @@ const isGodMode = adminEmails.includes(userEmail);
         setActiveTab('logs');
         if (window.innerWidth < 768) setIsHistoryOpen(false);
     };
+
+    if (showLanding && !isSignedIn) {
+        return <LandingPage onLaunchApp={() => setShowLanding(false)} />;
+    }
 
     return (
         <div className="w-screen h-screen bg-[#050505] text-white font-sans flex flex-col overflow-hidden selection:bg-emerald-500/30">
